@@ -15,9 +15,14 @@ final class Preferences: ObservableObject {
     /// Usual resting blood pressure from a medical record; 0 = not set.
     @Published var usualSystolic: Int { didSet { defaults.set(usualSystolic, forKey: "usualSystolic") } }
     @Published var usualDiastolic: Int { didSet { defaults.set(usualDiastolic, forKey: "usualDiastolic") } }
+    /// The pickers start on 120/80, near the average, but the value only counts once the person has
+    /// confirmed it with Done, so a default is never mistaken for a measurement.
+    @Published var usualConfirmed: Bool { didSet { defaults.set(usualConfirmed, forKey: "usualConfirmed") } }
+    static let defaultSystolic = 120
+    static let defaultDiastolic = 80
     var usual: UsualBP? {
         let u = UsualBP(systolic: usualSystolic, diastolic: usualDiastolic)
-        return usualSystolic > 0 && usualDiastolic > 0 && u.isPlausible ? u : nil
+        return usualConfirmed && u.isPlausible ? u : nil
     }
     /// Cuff readings paired with scans; shifts and narrows the blood pressure estimate.
     @Published var calibration: BPCalibration {
@@ -31,8 +36,12 @@ final class Preferences: ObservableObject {
         sex = Sex(rawValue: defaults.string(forKey: "sex") ?? "") ?? .unspecified
         let done = defaults.object(forKey: "onboardedAt") as? Double
         onboardedAt = done.map { Date(timeIntervalSince1970: $0) }
-        usualSystolic = defaults.integer(forKey: "usualSystolic")
-        usualDiastolic = defaults.integer(forKey: "usualDiastolic")
+        let storedSystolic = defaults.integer(forKey: "usualSystolic")
+        let storedDiastolic = defaults.integer(forKey: "usualDiastolic")
+        usualSystolic = storedSystolic > 0 ? storedSystolic : Self.defaultSystolic
+        usualDiastolic = storedDiastolic > 0 ? storedDiastolic : Self.defaultDiastolic
+        // A value saved before confirmation existed was chosen by the person.
+        usualConfirmed = defaults.object(forKey: "usualConfirmed") as? Bool ?? (storedSystolic > 0 && storedDiastolic > 0)
         calibration = (defaults.data(forKey: "bpCalibration").flatMap { try? JSONDecoder().decode(BPCalibration.self, from: $0) }) ?? BPCalibration()
         simulatedPulse = defaults.object(forKey: "simulatedPulse") as? Bool ?? true
     }

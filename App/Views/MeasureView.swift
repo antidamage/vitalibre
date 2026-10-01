@@ -204,10 +204,6 @@ struct CalibrateSheet: View {
             }
             .padding(20)
         }
-        .onAppear {
-            systolic = max(70, min(250, result.bp.systolic))
-            diastolic = max(40, min(150, result.bp.diastolic))
-        }
     }
 
     private func picker(_ title: String, _ value: Binding<Int>, _ range: ClosedRange<Int>) -> some View {

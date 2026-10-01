@@ -33,7 +33,7 @@ class Measurer(context: Context) {
     }
 
     val camera = CameraSource(context)
-    private val engine = ScanEngine { handle(it) }
+    private val engine = ScanEngine({ handle(it) }, { camera.decisionPending })
     private var simulated: SimulatedSource? = null
 
     var phase by mutableStateOf<Phase>(Phase.Idle)

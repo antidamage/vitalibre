@@ -39,7 +39,11 @@ sealed interface EngineEvent {
  * The UI thread only receives finished results (events are delivered on the main thread), so a slow
  * frame can never delay a reading and a reading can never stall the screen.
  */
-class ScanEngine(private val onEvent: (EngineEvent) -> Unit) {
+class ScanEngine(
+    private val onEvent: (EngineEvent) -> Unit,
+    /** True while something outside (the flash trial) needs the scan to keep going. */
+    private val holdFinish: () -> Boolean = { false },
+) {
     private val thread = HandlerThread("vitalibre-scan", Process.THREAD_PRIORITY_URGENT_DISPLAY).apply { start() }
     private val handler = Handler(thread.looper)
     private val main = Handler(Looper.getMainLooper())
@@ -104,7 +108,7 @@ class ScanEngine(private val onEvent: (EngineEvent) -> Unit) {
             val update = EngineEvent.Update(progress, guidance, live?.heartRate, live?.bp, lastBeat, origin, image)
             main.post { onEvent(update) }
         }
-        if (session.finished) finish(cfg)
+        if (session.finished && (!holdFinish() || session.elapsed >= ScanSession.MAX_SECONDS)) finish(cfg)
     }
 
     private fun finish(cfg: ScanConfig) {

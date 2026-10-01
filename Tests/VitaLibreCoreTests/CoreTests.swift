@@ -247,6 +247,20 @@ final class ProjectRuleTests: XCTestCase {
         }
     }
 
+    /// The calibration instructions are shared copy: two ways, two steps each, and the warning about unusual pressure.
+    func testCalibrationHowToStatesBothWaysAndTheWarning() throws {
+        let data = try Data(contentsOf: root.appendingPathComponent("publisher/config/policy.json"))
+        let policy = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let how = policy["calibrationHow"] as! String
+        for needle in ["typical for you", "A. With a fresh cuff reading", "B. With a known resting pressure", "Reset"] {
+            XCTAssertTrue(how.contains(needle), "missing: \(needle)")
+        }
+        for block in how.components(separatedBy: "\n\n") where block.hasPrefix("A.") || block.hasPrefix("B.") {
+            XCTAssertTrue(block.contains("\n1. ") && block.contains("\n2. "), "each way has two numbered steps")
+        }
+        XCTAssertEqual(policy["calibrationHowTitle"] as? String, "How to calibrate")
+    }
+
     func testAppSourceNeverImportsCore() throws {
         let files = FileManager.default.enumerator(at: root.appendingPathComponent("App"), includingPropertiesForKeys: nil)!
         for case let url as URL in files where url.pathExtension == "swift" {

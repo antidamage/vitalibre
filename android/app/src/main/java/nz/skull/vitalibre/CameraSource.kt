@@ -55,6 +55,8 @@ class CameraSource(private val context: Context) {
     private var coverStart = -1.0
     private var lastCovered = -10.0
     private var lastTorchCheck = -10.0
+    private var frames = 0
+    private var lastLog = 0.0
 
     fun start(owner: LifecycleOwner, done: (Result<Unit>) -> Unit) {
         val future = ProcessCameraProvider.getInstance(context)
@@ -151,10 +153,12 @@ class CameraSource(private val context: Context) {
                 while (x < x0 + side) {
                     val idx = y * rowStride + x * pixelStride
                     val r = buf.get(idx).toInt() and 0xFF
+                    val g = buf.get(idx + 1).toInt() and 0xFF
                     sumR += r
-                    sumG += buf.get(idx + 1).toInt() and 0xFF
+                    sumG += g
                     sumB += buf.get(idx + 2).toInt() and 0xFF
-                    if (r >= 250) hot++
+                    // Clipping that matters is in green, the channel the pulse is read from. Red clips on any fingertip under the torch.
+                    if (g >= 250) hot++
                     n++
                     x += 2
                 }
@@ -163,6 +167,13 @@ class CameraSource(private val context: Context) {
             if (n == 0) return
             val s = PPGSample(t, sumR.toDouble() / n, sumG.toDouble() / n, sumB.toDouble() / n, hot.toDouble() / n)
             manage(s)
+            // TEMP diagnostics: once a second, what the camera sees and what the cover check decides.
+            frames++
+            if (t - lastLog >= 1.0) {
+                android.util.Log.d("VLcam", "t=%.1f fps=%.1f r=%.0f g=%.0f b=%.0f sat=%.2f covered=%b torch=%s size=%dx%d".format(
+                    t, frames / (t - lastLog), s.r, s.g, s.b, s.saturated, s.covered, camera?.cameraInfo?.torchState?.value, w, h))
+                lastLog = t; frames = 0
+            }
             onSample?.invoke(s)
         } finally {
             image.close()

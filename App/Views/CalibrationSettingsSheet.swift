@@ -14,7 +14,7 @@ struct CalibrationSettingsSheet: View {
                 HStack {
                     Text("CALIBRATION").font(.chakra(15, .medium)).tracking(3).foregroundStyle(palette.clock)
                     Spacer()
-                    Button("Done") { dismiss() }.font(.chakra(14, .medium)).foregroundStyle(palette.led)
+                    Button("Done") { prefs.usualConfirmed = true; dismiss() }.font(.chakra(14, .medium)).foregroundStyle(palette.led)
                 }
                 VStack(alignment: .leading, spacing: 12) {
                     SectionTitle(text: "Typical resting blood pressure")
@@ -29,8 +29,13 @@ struct CalibrationSettingsSheet: View {
                     Text("Cuff calibrations").font(.chakra(14, .medium)).foregroundStyle(palette.readout)
                     Spacer()
                     Text("\(prefs.calibration.count)").font(.chakra(14, .medium)).foregroundStyle(palette.readout)
-                    if prefs.calibration.count > 0 {
-                        Button("Reset") { prefs.calibration = BPCalibration() }
+                    if prefs.calibration.count > 0 || prefs.usualConfirmed {
+                        Button("Reset") {
+                            prefs.calibration = BPCalibration()
+                            prefs.usualConfirmed = false
+                            prefs.usualSystolic = Preferences.defaultSystolic
+                            prefs.usualDiastolic = Preferences.defaultDiastolic
+                        }
                             .font(.chakra(13, .medium)).foregroundStyle(palette.led).padding(.leading, 10)
                     }
                 }
@@ -46,7 +51,6 @@ struct CalibrationSettingsSheet: View {
         VStack(spacing: 4) {
             Text(title.uppercased()).font(.rajdhani(12, semibold: true)).tracking(1.5).foregroundStyle(palette.readoutSecondary)
             Picker(title, selection: value) {
-                Text("Not set").tag(0)
                 ForEach(range, id: \.self) { Text("\($0)").tag($0) }
             }
             .pickerStyle(.wheel).frame(height: 130)

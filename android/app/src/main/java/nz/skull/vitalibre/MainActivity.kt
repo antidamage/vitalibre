@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
     private var onGranted: (() -> Unit)? = null
     private var onDenied: (() -> Unit)? = null
 
-    /** Set by the `simulate` launch extra, to exercise the scan path without a finger. */
+    /** Debug builds only: the `simulate` launch extra exercises the scan path without a finger. */
     var simulate = false
         private set
 
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        simulate = intent?.getBooleanExtra("simulate", false) == true
+        simulate = BuildConfig.SIMULATION && intent?.getBooleanExtra("simulate", false) == true
         Fonts.init(assets)
         Publisher.init(this)
         Sounds.init(this)

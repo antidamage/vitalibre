@@ -278,5 +278,6 @@ config with the iOS build through the asset path instead of copying them.
   the trace image, the sweep and the progress arc, in their own layer. The trace is rendered off the UI thread.
 - Torch held on by CameraX (state checked and re-applied); exposure and white balance locked after a second of cover.
 - Haptics through the vibrator, sounds through a sound pool, both from the engine thread.
-- Calibration screen lists cuff readings with an Add button (enabled while a result is on screen) and removal.
+- The iOS build is the source of truth for screens, copy and behaviour; the Android screens match it (the calibration screen has the typical resting pressure and the cuff-calibration count with Reset, nothing more).
+- The synthetic pulse (for testing the scan path) exists only in debug builds; a release build cannot run it.
 - Not yet on Android: Play Billing donations (the buttons are inactive) and the confetti.

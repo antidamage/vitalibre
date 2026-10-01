@@ -320,49 +320,34 @@ fun CalibrationDialog(onDismiss: () -> Unit) {
     val env = LocalEnv.current
     val p = LocalPalette.current
     val prefs = env.prefs
-    var showAdd by remember { mutableStateOf(false) }
-    val result = (env.measurer.phase as? Measurer.Phase.Result)?.result
     FullDialog(onDismiss) {
         Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("CALIBRATION", color = p.clock, style = Fonts.chakra(15.sp, Fonts.Face.MEDIUM), letterSpacing = 3.sp)
-                Text("Done", color = p.led, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM), modifier = Modifier.clickable { onDismiss() })
+                Text("Done", color = p.led, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM), modifier = Modifier.clickable { prefs.confirmUsual(); onDismiss() })
             }
             Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionTitle("Typical resting blood pressure")
-                SettingRow("Systolic") {
-                    MenuPicker(if (prefs.usualSystolic == 0) "Not set" else "${prefs.usualSystolic}", listOf("Not set" to 0) + (70..220).map { "$it" to it }, { prefs.changeUsualSystolic(it) })
-                }
-                SettingRow("Diastolic") {
-                    MenuPicker(if (prefs.usualDiastolic == 0) "Not set" else "${prefs.usualDiastolic}", listOf("Not set" to 0) + (40..140).map { "$it" to it }, { prefs.changeUsualDiastolic(it) })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("SYSTOLIC", color = p.readoutSecondary, style = Fonts.rajdhani(12.sp, true), letterSpacing = 1.5.sp)
+                        MenuPicker("${prefs.usualSystolic}", (70..220).map { "$it" to it }, { prefs.changeUsualSystolic(it) })
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("DIASTOLIC", color = p.readoutSecondary, style = Fonts.rajdhani(12.sp, true), letterSpacing = 1.5.sp)
+                        MenuPicker("${prefs.usualDiastolic}", (40..140).map { "$it" to it }, { prefs.changeUsualDiastolic(it) })
+                    }
                 }
             }
-            Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    SectionTitle("Cuff calibrations", Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth().panel().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Cuff calibrations", color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("${prefs.calibration.count}", color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM))
-                }
-                val df = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
-                prefs.calibration.points.forEachIndexed { i, pt ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(df.format(Date((pt.epochSeconds * 1000).toLong())), color = p.readoutSecondary, style = Fonts.rajdhani(14.sp))
-                        Text("${pt.cuffSystolic.roundToInt()} / ${pt.cuffDiastolic.roundToInt()}", color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM))
-                        Text("×", color = p.led, style = Fonts.chakra(20.sp), modifier = Modifier.clickable { prefs.removeCalibration(i) }.padding(horizontal = 10.dp))
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    RingButton("Add", enabled = result != null) { showAdd = true }
-                    if (prefs.calibration.count > 0) {
-                        Text("Reset", color = p.led, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM), modifier = Modifier.clickable { prefs.resetCalibration() }.padding(10.dp))
+                    if (prefs.calibration.count > 0 || prefs.usualConfirmed) {
+                        Text("Reset", color = p.led, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM), modifier = Modifier.clickable { prefs.resetAllCalibration() })
                     }
                 }
             }
-        }
-    }
-    if (showAdd && result != null) {
-        CalibrateDialog(result.bp.systolic, result.bp.diastolic, onDismiss = { showAdd = false }) { cs, cd ->
-            addCuffReading(env, result, cs, cd)
-            showAdd = false
         }
     }
 }

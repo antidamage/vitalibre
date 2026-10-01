@@ -19,7 +19,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // The synthetic pulse exists only here; a shipped build can never run it.
+            buildConfigField("boolean", "SIMULATION", "true")
+        }
         release {
+            buildConfigField("boolean", "SIMULATION", "false")
             isMinifyEnabled = false
             // Signed with the debug key until a real release key exists; this is a test build.
             signingConfig = signingConfigs.getByName("debug")
@@ -31,7 +36,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     // Fonts, sounds, the model weights and the publisher config are shared with the iOS build, not copied.
     sourceSets["main"].assets.srcDirs("../../App/Resources", "../../publisher")

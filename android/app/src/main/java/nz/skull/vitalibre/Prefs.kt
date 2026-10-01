@@ -13,6 +13,11 @@ import org.json.JSONObject
 
 /** User preferences, on the device only. */
 class Prefs(context: Context) {
+    companion object {
+        const val DEFAULT_SYSTOLIC = 120
+        const val DEFAULT_DIASTOLIC = 80
+    }
+
     private val sp = context.getSharedPreferences("vitalibre", Context.MODE_PRIVATE)
 
     var themeMode by mutableStateOf(ThemeMode.entries.firstOrNull { it.name == sp.getString("themeMode", "DARK") } ?: ThemeMode.DARK)
@@ -23,9 +28,19 @@ class Prefs(context: Context) {
     var sex by mutableStateOf(Sex.entries.firstOrNull { it.name == sp.getString("sex", "UNSPECIFIED") } ?: Sex.UNSPECIFIED)
         private set
     /** Usual resting blood pressure from a medical record; 0 = not set. */
-    var usualSystolic by mutableStateOf(sp.getInt("usualSystolic", 0))
+    var usualSystolic by mutableStateOf(sp.getInt("usualSystolic", 0).takeIf { it > 0 } ?: DEFAULT_SYSTOLIC)
         private set
-    var usualDiastolic by mutableStateOf(sp.getInt("usualDiastolic", 0))
+    var usualDiastolic by mutableStateOf(sp.getInt("usualDiastolic", 0).takeIf { it > 0 } ?: DEFAULT_DIASTOLIC)
+        private set
+    /**
+     * The pickers start on 120/80, near the average, but the value only counts once the person has confirmed
+     * it with Done, so a default is never mistaken for a measurement. A value saved before confirmation
+     * existed was chosen by the person.
+     */
+    var usualConfirmed by mutableStateOf(
+        if (sp.contains("usualConfirmed")) sp.getBoolean("usualConfirmed", false)
+        else sp.getInt("usualSystolic", 0) > 0 && sp.getInt("usualDiastolic", 0) > 0,
+    )
         private set
     /** Epoch millis when the first-load screen was confirmed; 0 = show it. */
     var onboardedAt by mutableStateOf(sp.getLong("onboardedAt", 0L))
@@ -36,7 +51,7 @@ class Prefs(context: Context) {
     val usual: UsualBP?
         get() {
             val u = UsualBP(usualSystolic, usualDiastolic)
-            return if (usualSystolic > 0 && usualDiastolic > 0 && u.isPlausible) u else null
+            return if (usualConfirmed && u.isPlausible) u else null
         }
 
     fun changeTheme(v: ThemeMode) { themeMode = v; sp.edit().putString("themeMode", v.name).apply() }
@@ -44,6 +59,15 @@ class Prefs(context: Context) {
     fun changeSex(v: Sex) { sex = v; sp.edit().putString("sex", v.name).apply() }
     fun changeUsualSystolic(v: Int) { usualSystolic = v; sp.edit().putInt("usualSystolic", v).apply() }
     fun changeUsualDiastolic(v: Int) { usualDiastolic = v; sp.edit().putInt("usualDiastolic", v).apply() }
+    fun confirmUsual() { usualConfirmed = true; sp.edit().putBoolean("usualConfirmed", true).apply() }
+
+    /** Clears the cuff calibrations and the confirmed typical pressure; the pickers go back to 120/80. */
+    fun resetAllCalibration() {
+        resetCalibration()
+        usualConfirmed = false; usualSystolic = DEFAULT_SYSTOLIC; usualDiastolic = DEFAULT_DIASTOLIC
+        sp.edit().putBoolean("usualConfirmed", false).putInt("usualSystolic", DEFAULT_SYSTOLIC).putInt("usualDiastolic", DEFAULT_DIASTOLIC).apply()
+    }
+
     fun setOnboarded(done: Boolean) {
         onboardedAt = if (done) System.currentTimeMillis() else 0L
         sp.edit().putLong("onboardedAt", onboardedAt).apply()
@@ -51,7 +75,6 @@ class Prefs(context: Context) {
 
     fun addCalibration(point: CalibrationPoint) = writeCalibration(calibration.with(point))
     fun resetCalibration() = writeCalibration(BPCalibration())
-    fun removeCalibration(index: Int) = writeCalibration(BPCalibration(calibration.points.filterIndexed { i, _ -> i != index }))
 
     private fun writeCalibration(c: BPCalibration) {
         calibration = c

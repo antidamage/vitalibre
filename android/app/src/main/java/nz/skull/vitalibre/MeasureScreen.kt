@@ -56,7 +56,7 @@ fun MeasureScreen() {
         is Measurer.Phase.Idle, is Measurer.Phase.Starting -> OrbInput(centre = "Start")
         is Measurer.Phase.Scanning -> OrbInput(
             centre = m.liveHeartRate?.let { "${it.roundToInt()}" } ?: "", sub = m.liveBP?.text,
-            caption = if (m.isSimulated) "simulated" else if (m.liveHeartRate == null) null else "bpm", showsCamera = !m.isSimulated, scanning = true,
+            caption = if (m.liveHeartRate == null) null else "bpm", showsCamera = !m.isSimulated, scanning = true,
             progress = m.progress.toFloat(), traceImage = m.traceImage, lastBeat = m.lastBeat,
         )
         is Measurer.Phase.Analysing -> OrbInput(centre = "…")
@@ -124,7 +124,7 @@ fun MeasureScreen() {
 
     val shown = phase as? Measurer.Phase.Result
     if (calibrating && shown != null) {
-        CalibrateDialog(shown.result.bp.systolic, shown.result.bp.diastolic, onDismiss = { calibrating = false }) { cs, cd ->
+        CalibrateDialog(Prefs.DEFAULT_SYSTOLIC, Prefs.DEFAULT_DIASTOLIC, onDismiss = { calibrating = false }) { cs, cd ->
             addCuffReading(env, shown.result, cs, cd)
             calibrating = false
         }
@@ -139,7 +139,8 @@ fun addCuffReading(env: AppEnv, result: ScanResult, cuffSystolic: Int, cuffDiast
 }
 
 private fun shareText(hr: Double, bp: String) =
-    "Heart rate ${hr.roundToInt()} bpm. Blood pressure estimate $bp mmHg. Estimates only, not a medical device. VitaLibre."
+    "Heart rate ${hr.roundToInt()} bpm. Blood pressure estimate $bp mmHg. Estimates only, not a medical device. VitaLibre, " +
+        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date()) + "."
 
 @Composable
 private fun PictureGlyph(color: androidx.compose.ui.graphics.Color) {

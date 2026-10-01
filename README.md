@@ -12,7 +12,7 @@ Readings stay on the device. See `specs/ppg-vitals-app.md` for everything.
 - `publisher/config/` publisher-owned values (bundle id, product ids, policy text)
 - `Tests/VitaLibreCoreTests` run with `swift test` on any Mac
 - `tools/gen_xcodeproj.py` regenerates `VitaLibre.xcodeproj` (synchronised folders);
-  `tools/make_icon.py` redraws the icon
+  `tools/make_icon.py` writes the icon set from the master image
 
 ## Licence
 

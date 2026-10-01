@@ -7,6 +7,10 @@ struct CalibrationPoint: Codable, Equatable {
     var date: Date
     /// Phone model identifier the pair was taken on, e.g. "iPhone18,2"; nil for older points.
     var device: String? = nil
+    /// The starting point (age prior or typical resting pressure) the raw value was built on. nil for older
+    /// points, which were taken on the model's own base.
+    var baseSystolic: Double? = nil
+    var baseDiastolic: Double? = nil
 
     static func isPlausible(systolic: Double, diastolic: Double) -> Bool {
         (70...250).contains(systolic) && (40...150).contains(diastolic) && systolic > diastolic + 10
@@ -26,20 +30,29 @@ struct BPCalibration: Codable, Equatable {
 
     var count: Int { points.count }
 
-    var offset: (systolic: Double, diastolic: Double) {
+    typealias Base = (systolic: Double, diastolic: Double)
+
+    /// What each pairing says the estimate should shift by, measured against the CURRENT starting point.
+    /// A pairing stores the raw value (starting point plus the pulse adjustment) it was made on; if the
+    /// starting point has changed since (a typical pressure was set, say), the old gap would otherwise be
+    /// counted on top of a baseline that already includes it.
+    private func gaps(base: Base, legacy: Base) -> (s: [Double], d: [Double]) {
+        (points.map { $0.cuffSystolic - base.systolic - ($0.rawSystolic - ($0.baseSystolic ?? legacy.systolic)) },
+         points.map { $0.cuffDiastolic - base.diastolic - ($0.rawDiastolic - ($0.baseDiastolic ?? legacy.diastolic)) })
+    }
+
+    func offset(base: Base, legacy: Base) -> (systolic: Double, diastolic: Double) {
         guard !points.isEmpty else { return (0, 0) }
-        let s = Stats.mean(points.map { $0.cuffSystolic - $0.rawSystolic })
-        let d = Stats.mean(points.map { $0.cuffDiastolic - $0.rawDiastolic })
+        let g = gaps(base: base, legacy: legacy)
         let cap = Self.maxOffset
-        return (max(-cap, min(cap, s)), max(-cap, min(cap, d)))
+        return (max(-cap, min(cap, Stats.mean(g.s))), max(-cap, min(cap, Stats.mean(g.d))))
     }
 
     /// Half-widths for the displayed range. `fallback` is the model's population figure.
-    func halfWidths(fallback: (systolic: Double, diastolic: Double)) -> (systolic: Double, diastolic: Double) {
+    func halfWidths(fallback: (systolic: Double, diastolic: Double), base: Base, legacy: Base) -> (systolic: Double, diastolic: Double) {
         guard points.count >= Self.minPointsForNarrowing else { return fallback }
-        let off = offset
-        let s = Stats.std(points.map { $0.cuffSystolic - $0.rawSystolic - off.systolic })
-        let d = Stats.std(points.map { $0.cuffDiastolic - $0.rawDiastolic - off.diastolic })
+        let g = gaps(base: base, legacy: legacy)
+        let s = Stats.std(g.s), d = Stats.std(g.d)
         return (max(Self.minHalfWidth.systolic, min(fallback.systolic, 1.64 * s)),
                 max(Self.minHalfWidth.diastolic, min(fallback.diastolic, 1.64 * d)))
     }

@@ -281,10 +281,10 @@ final class CalibrationTests: XCTestCase {
         for (rs, cs) in [(118.0, 130.0), (121.0, 132.0), (119.0, 129.0)] {
             cal.add(point(rawS: rs, rawD: 78, cuffS: cs, cuffD: 84))
         }
-        let w = cal.halfWidths(fallback: (14, 9))
+        let w = cal.halfWidths(fallback: (14, 9), base: (systolic: 120, diastolic: 78), legacy: (systolic: 120, diastolic: 78))
         XCTAssertLessThan(w.systolic, 14)
         XCTAssertGreaterThanOrEqual(w.systolic, BPCalibration.minHalfWidth.systolic)
-        XCTAssertEqual(cal.offset.systolic, 11.0, accuracy: 0.001)
+        XCTAssertEqual(cal.offset(base: (systolic: 120, diastolic: 78), legacy: (systolic: 120, diastolic: 78)).systolic, 11.0, accuracy: 0.001)
     }
 
     func testImplausibleCuffReadingsAreRejected() {
@@ -310,10 +310,23 @@ final class CalibrationTests: XCTestCase {
         XCTAssertEqual(r.systolic, 120, accuracy: 1e-9)
     }
 
+    func testChangingTheStartingPointDoesNotDoubleCountAnOldPairing() {
+        // Paired when the starting point was 118/76 (raw 122/80: a +4/+4 pulse adjustment) against a cuff of 126/84.
+        var cal = BPCalibration()
+        cal.add(CalibrationPoint(rawSystolic: 122, rawDiastolic: 80, cuffSystolic: 126, cuffDiastolic: 84, date: Date(),
+                                 baseSystolic: 118, baseDiastolic: 76))
+        // Now a typical pressure of 120/80 is set; the same pulse adjustment (+4) must still give 126/84, not 128/88.
+        let usual = UsualBP(systolic: 120, diastolic: 80)
+        let f = BPFeatures(heartRate: 70 + 12 * 0.04, intervalCV: 0.03, crestFraction: 0.3, skewness: 0.6, reflectionIndex: 0.15)
+        let adj = BPEstimator.raw(f, model: testModel(), age: nil, sex: .unspecified, usual: usual).systolic - 120
+        let r = BPEstimator.estimate(f, model: testModel(), age: nil, sex: .unspecified, usual: usual, calibration: cal)
+        XCTAssertEqual(Double(r.systolic), 126 + (adj - 4), accuracy: 1.0)
+    }
+
     func testOffsetIsCapped() {
         var cal = BPCalibration()
         cal.add(point(rawS: 60, rawD: 40, cuffS: 200, cuffD: 120))
-        XCTAssertEqual(cal.offset.systolic, BPCalibration.maxOffset)
+        XCTAssertEqual(cal.offset(base: (systolic: 120, diastolic: 78), legacy: (systolic: 120, diastolic: 78)).systolic, BPCalibration.maxOffset)
     }
 }
 

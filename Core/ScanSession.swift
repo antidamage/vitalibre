@@ -55,6 +55,9 @@ struct ScanResult: Equatable {
     /// The model's value before calibration, kept so a cuff reading can be paired with this scan.
     var rawSystolic: Double
     var rawDiastolic: Double
+    /// The starting point the raw value was built on, kept so a cuff pairing can remember it.
+    var baseSystolic: Double
+    var baseDiastolic: Double
     /// The whole run's filtered waveform, normalised -1...1 at `analysisRate`, for the graph kept on screen.
     var trace: [Double]
     /// Seconds from the run's start to the trace's last sample.
@@ -192,6 +195,8 @@ struct ScanSession {
                                        quality: q.score, level: q.level, duration: run.duration,
                                        intervals: hr.intervals, modelVersion: model.version, features: feats,
                                        rawSystolic: raw.systolic, rawDiastolic: raw.diastolic,
+                                       baseSystolic: BPEstimator.baseline(model: model, age: age, sex: sex, usual: usual).systolic,
+                                       baseDiastolic: BPEstimator.baseline(model: model, age: age, sex: sex, usual: usual).diastolic,
                                        trace: Self.normalised(w.filtered),
                                        traceEnd: w.start + Double(w.filtered.count - 1) / fs))
         }

@@ -197,7 +197,8 @@ struct CalibrateSheet: View {
                 RingButton(title: "Save", disabled: !CalibrationPoint.isPlausible(systolic: Double(systolic), diastolic: Double(diastolic))) {
                     onSave(CalibrationPoint(rawSystolic: result.rawSystolic, rawDiastolic: result.rawDiastolic,
                                             cuffSystolic: Double(systolic), cuffDiastolic: Double(diastolic), date: Date(),
-                                            device: DeviceInfo.identifier))
+                                            device: DeviceInfo.identifier,
+                                            baseSystolic: result.baseSystolic, baseDiastolic: result.baseDiastolic))
                     dismiss()
                 }
                 Spacer()

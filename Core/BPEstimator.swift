@@ -68,7 +68,9 @@ enum BPEstimator {
     }
 
     /// The model's own value before any calibration.
-    static func raw(_ f: BPFeatures, model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = nil) -> (systolic: Double, diastolic: Double) {
+    /// The starting point before any pulse adjustment: the typical resting pressure if given, else the age
+    /// and sex prior.
+    static func baseline(model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = nil) -> (systolic: Double, diastolic: Double) {
         var sys = model.baseSystolic, dia = model.baseDiastolic
         if let usual, usual.isPlausible {
             sys = Double(usual.systolic); dia = Double(usual.diastolic)
@@ -81,7 +83,12 @@ enum BPEstimator {
             if sex == .male { sys += model.maleSystolicOffset; dia += model.maleDiastolicOffset }
             if sex == .female { sys -= model.maleSystolicOffset; dia -= model.maleDiastolicOffset }
         }
+        return (sys, dia)
+    }
 
+    /// The model's own value before any calibration: the starting point plus the capped pulse adjustment.
+    static func raw(_ f: BPFeatures, model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = nil) -> (systolic: Double, diastolic: Double) {
+        var (sys, dia) = baseline(model: model, age: age, sex: sex, usual: usual)
         var dSys = 0.0, dDia = 0.0
         for t in model.terms {
             let z = (value(t.feature, f) - t.mean) / t.scale
@@ -94,9 +101,11 @@ enum BPEstimator {
 
     static func estimate(_ f: BPFeatures, model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = nil,
                          calibration: BPCalibration = BPCalibration()) -> BPRange {
-        let r = raw(f, model: model, age: age, sex: sex, usual: usual), off = calibration.offset
+        let base = baseline(model: model, age: age, sex: sex, usual: usual)
+        let legacy = (systolic: model.baseSystolic, diastolic: model.baseDiastolic)
+        let r = raw(f, model: model, age: age, sex: sex, usual: usual), off = calibration.offset(base: base, legacy: legacy)
         let s = Int((r.systolic + off.systolic).rounded()), d = Int((r.diastolic + off.diastolic).rounded())
-        let w = calibration.halfWidths(fallback: (model.halfWidthSystolic, model.halfWidthDiastolic))
+        let w = calibration.halfWidths(fallback: (model.halfWidthSystolic, model.halfWidthDiastolic), base: base, legacy: legacy)
         return BPRange(systolicLow: s - Int(w.systolic.rounded()), systolicHigh: s + Int(w.systolic.rounded()),
                        diastolicLow: d - Int(w.diastolic.rounded()), diastolicHigh: d + Int(w.diastolic.rounded()),
                        systolic: s, diastolic: d, calibrated: calibration.count > 0 || usual?.isPlausible == true)

@@ -76,7 +76,7 @@ def main() -> None:
     target = {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon" if has_icon else "",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": "1",
+        "CURRENT_PROJECT_VERSION": "2",
         "DEVELOPMENT_TEAM": args.team,
         "ENABLE_PREVIEWS": "YES",
         "GENERATE_INFOPLIST_FILE": "YES",
@@ -87,7 +87,7 @@ def main() -> None:
         "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
         "INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone": "UIInterfaceOrientationPortrait",
         "LD_RUNPATH_SEARCH_PATHS": '"$(inherited) @executable_path/Frameworks"',
-        "MARKETING_VERSION": "0.1.0",
+        "MARKETING_VERSION": "0.2.0",
         "PRODUCT_BUNDLE_IDENTIFIER": args.bundle_id,
         "PRODUCT_NAME": '"$(TARGET_NAME)"',
         "SUPPORTED_PLATFORMS": '"iphoneos iphonesimulator"',

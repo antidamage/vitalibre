@@ -196,6 +196,7 @@ fun AboutScreen() {
             SectionTitle("Third-party notices")
             BodyText("Chakra Petch, © 2018 The Chakra Petch Project Authors, SIL Open Font License 1.1.")
             BodyText("Rajdhani, by Indian Type Foundry, SIL Open Font License 1.1.")
+            BodyText("Jetpack Compose, CameraX and the other AndroidX libraries, © The Android Open Source Project, Apache License 2.0.")
             BodyText("The beat detector reimplements the published algorithm of Elgendi et al. (PLoS ONE 2013). The blood pressure approach follows the survey by Frey, Menon and Elgendi (npj Digital Medicine 2022, CC BY 4.0). No code or figures are copied from either.")
             BodyText("The dial click is from the owner's own dashboard sound set.")
             if (Publisher.sourceURL.isNotEmpty()) {

@@ -282,3 +282,4 @@ config with the iOS build through the asset path instead of copying them.
 - The iOS build is the source of truth for screens, copy and behaviour; the Android screens match it (the calibration screen has the typical resting pressure and the cuff-calibration count with Reset, nothing more).
 - The synthetic pulse (for testing the scan path) exists only in debug builds; a release build cannot run it.
 - Not yet on Android: Play Billing donations (the buttons are inactive) and the confetti.
+- **Licences on Android**: the app is GPL-3.0-or-later like the iOS build (same `LICENSE`). Compose, CameraX and AndroidX are Apache-2.0, which is compatible with GPLv3 and is credited in About. The Android manifest requests only CAMERA and VIBRATE; there is no network permission, so the "nothing is sent" statement holds there too. Both font licences (Chakra Petch, Rajdhani) ship in `App/Resources/Fonts`.

@@ -228,6 +228,7 @@ These supersede anything above that disagrees.
   opacities 54/70/64%. Light: (0,245,255)@23, (0,255,115)@30, (0,143,255)@33, applied to
   `#00383B #004D23 #002F54`, opaque. Heartbeat trace core is `#FFE6D6` on dark and the LED
   colour on light, with the LED colour as its glow.
+- **Clipping**: the saturated fraction is measured on the GREEN channel (the one the pulse is read from). Red clips on nearly every pixel of a fingertip under the torch (measured on an Android phone: about 78-88% at red 250), so counting red made a correctly covered finger flip between "press more lightly" and "not covered".
 - **Flash**: held on for the whole scan. iOS can switch it off, so the torch state is
   checked twice a second and re-applied.
 - **Age** is a menu (Not set, 18-100). Sex is a menu.

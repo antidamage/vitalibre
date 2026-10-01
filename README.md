@@ -1,7 +1,7 @@
 # VitaLibre
 
 **Branch `android` targets Android** (Kotlin, Jetpack Compose, CameraX). The `main` branch targets iOS.
-Releases are tagged per platform: iOS on `main` is `0.1`; Android releases are tagged `android-<version>`.
+Releases are tagged per platform as `<version>-ios` and `<version>-android`; the first Android release is `0.1-android`.
 
 Native SwiftUI camera-PPG app (iPhone first). Heart rate plus an experimental
 blood-pressure range from a fingertip on the rear camera with the torch on.

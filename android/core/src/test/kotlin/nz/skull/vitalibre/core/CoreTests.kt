@@ -291,6 +291,19 @@ class ProjectRuleTests {
         assertEquals(BPModel.prior1, BPModel.fromJson(text))
     }
 
+    /** The calibration instructions are shared copy: two ways, two steps each, and the warning about unusual pressure. */
+    @Test fun calibrationHowToStatesBothWaysAndTheWarning() {
+        val policy = MiniJson.parse(File(root, "publisher/config/policy.json").readText()) as Map<*, *>
+        val how = policy["calibrationHow"] as String
+        for (needle in listOf("typical for you", "A. With a fresh cuff reading", "B. With a known resting pressure", "Reset")) {
+            assertTrue(how.contains(needle), "missing: $needle")
+        }
+        for (block in how.split("\n\n").filter { it.startsWith("A.") || it.startsWith("B.") }) {
+            assertTrue(block.contains("\n1. ") && block.contains("\n2. "), "each way has two numbered steps")
+        }
+        assertEquals("How to calibrate", policy["calibrationHowTitle"])
+    }
+
     @Test fun noPublisherIdentifiersInAppSource() {
         val cfg = MiniJson.parse(File(root, "publisher/config/store.config.json").readText()) as Map<*, *>
         val secrets = mutableListOf(cfg["bundleId"] as String)

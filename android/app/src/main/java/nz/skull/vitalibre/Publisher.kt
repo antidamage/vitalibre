@@ -21,6 +21,8 @@ object Publisher {
     lateinit var disclaimer: String
     lateinit var disclaimerBody: String
     lateinit var regulatory: String
+    lateinit var calibrationHowTitle: String
+    lateinit var calibrationHow: String
     lateinit var model: BPModel
 
     fun init(context: Context) {
@@ -41,6 +43,8 @@ object Publisher {
         disclaimer = policy["disclaimer"] as String
         disclaimerBody = policy["disclaimerBody"] as String
         regulatory = policy["regulatory"] as String
+        calibrationHowTitle = policy["calibrationHowTitle"] as String
+        calibrationHow = policy["calibrationHow"] as String
         model = try {
             BPModel.fromJson(text("bp-model.json"))
         } catch (e: Exception) {

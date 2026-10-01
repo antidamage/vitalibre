@@ -1,5 +1,8 @@
 # VitaLibre
 
+**Branch `main` targets iOS.** The `android` branch targets Android.
+Releases are tagged per platform: iOS on `main` is `0.1`; Android releases are tagged `android-<version>`.
+
 Native SwiftUI camera-PPG app (iPhone first). Heart rate plus an experimental
 blood-pressure range from a fingertip on the rear camera with the torch on.
 Readings stay on the device. See `specs/ppg-vitals-app.md` for everything.

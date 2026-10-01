@@ -14,108 +14,107 @@ struct SettingsView: View {
         #endif
     }
 
+    private func symbol(_ mode: ThemeMode) -> String {
+        switch mode { case .auto: return "circle.lefthalf.filled"; case .light: return "sun.max"; case .dark: return "moon" }
+    }
+
     var body: some View {
         ZStack {
             palette.backgroundGradient.ignoresSafeArea()
             ScrollView {
-                VStack(spacing: 14) {
-                    HStack {
-                        Text("SETTINGS").font(.chakra(15, .medium)).tracking(3).foregroundStyle(palette.clock)
-                        Spacer()
-                        Button("Done") { dismiss() }
-                            .font(.chakra(14, .medium)).foregroundStyle(palette.led)
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top) {
+                        ScreenHeading(title: "Settings", subtitle: "Make yourself comfortable.")
+                        Button("Done") { dismiss() }.font(.chakra(14, .medium)).foregroundStyle(palette.led).padding(.top, 18)
                     }
-                    theme
-                    profile
-                    calibration
-                    disclaimer
-                    if isSimulator { simulator }
-                }
-                .padding(16)
-            }
-        }
-    }
-
-    private var theme: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: "Theme")
-            HStack(spacing: 0) {
-                ForEach(ThemeMode.allCases) { mode in
-                    Button {
-                        DialClick.shared.play()
-                        prefs.themeMode = mode
-                    } label: {
-                        Text(mode.label).font(.chakra(14, .medium))
-                            .foregroundStyle(prefs.themeMode == mode ? palette.led : palette.clock)
-                            .frame(maxWidth: .infinity, minHeight: 38)
-                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(prefs.themeMode == mode ? palette.background.mixed(with: .black, palette.isLight ? 0.06 : 0.35) : .clear))
+                    appearance
+                    aboutYou
+                    SectionPanel(title: "Calibration", symbol: "slider.horizontal.3") {
+                        Button { showCalibration = true } label: {
+                            HStack { Text("Typical pressure and cuff readings"); Spacer(); Image(systemName: "chevron.right") }
+                                .frame(maxWidth: .infinity)
+                        }.buttonStyle(ConsoleStyle())
                     }
-                    .buttonStyle(.plain)
+                    SectionPanel(title: "Your data", symbol: "lock.shield") {
+                        DataRow(title: "Storage", value: "On this device")
+                        DataRow(title: "Account", value: "Not required")
+                        Text("Readings stay here. Nothing is sent to the developer or third parties. You choose what to share using the share sheet.")
+                            .font(.rajdhani(16)).foregroundStyle(palette.readoutSecondary)
+                    }
+                    SectionPanel(title: "Not a medical device", symbol: "info.circle") {
+                        Text(Publisher.policy.disclaimerBody).font(.rajdhani(16)).foregroundStyle(palette.readoutSecondary)
+                        Button("Show the intro again") { prefs.onboardedAt = nil; dismiss() }.buttonStyle(ConsoleStyle())
+                    }
+                    if isSimulator {
+                        SectionPanel(title: "Simulator", symbol: "play.circle") {
+                            Toggle(isOn: $prefs.simulatedPulse) { Text("Simulated pulse").font(.chakra(14, .medium)) }.tint(palette.led)
+                        }
+                    }
                 }
-            }
-            .padding(3).background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(palette.background.mixed(with: .black, palette.isLight ? 0.03 : 0.15)))
-        }
-        .padding(16).panel()
-    }
-
-    private var profile: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            row("Age") {
-                Picker("Age", selection: $prefs.age) {
-                    Text("Not set").tag(0)
-                    ForEach(18...100, id: \.self) { Text("\($0)").tag($0) }
-                }
-                .pickerStyle(.menu).tint(palette.led)
-            }
-            row("Sex") {
-                Picker("Sex", selection: $prefs.sex) {
-                    ForEach(Sex.allCases, id: \.self) { Text($0 == .unspecified ? "Not set" : $0.rawValue.capitalized).tag($0) }
-                }
-                .pickerStyle(.menu).tint(palette.led)
+                .padding(.horizontal, 22).padding(.bottom, 24).frame(maxWidth: 640).frame(maxWidth: .infinity)
             }
         }
-        .padding(16).panel()
-    }
-
-    private var calibration: some View {
-        Button {
-            showCalibration = true
-        } label: {
-            row("Calibration") {
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .medium)).foregroundStyle(palette.clock)
-            }
-        }
-        .buttonStyle(.plain)
-        .padding(16).panel()
         .sheet(isPresented: $showCalibration) {
             CalibrationSettingsSheet().environment(\.palette, palette)
         }
     }
 
-    private var disclaimer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: "Not a medical device")
-            BodyText(text: Publisher.policy.disclaimerBody)
-            Button("Show the intro again") { prefs.onboardedAt = nil; dismiss() }
-                .font(.chakra(12, .medium)).foregroundStyle(palette.led)
+    private var appearance: some View {
+        SectionPanel(title: "Appearance", symbol: "circle.lefthalf.filled") {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Colour theme").font(.chakra(18))
+                    Text("Auto follows your device.").font(.rajdhani(16)).foregroundStyle(palette.readoutSecondary)
+                }
+                Spacer()
+                HStack(spacing: 4) {
+                    ForEach(Array(palette.ringInk.enumerated()), id: \.offset) { _, color in
+                        Circle().fill(color).frame(width: 7, height: 7)
+                    }
+                }.accessibilityHidden(true)
+            }
+            HStack(spacing: 7) {
+                ForEach(ThemeMode.allCases) { mode in
+                    Button { prefs.themeMode = mode; DialClick.shared.play() } label: {
+                        VStack(spacing: 11) {
+                            Image(systemName: symbol(mode)).font(.system(size: 19, weight: .light))
+                            Text(mode.label)
+                            Capsule().fill(prefs.themeMode == mode ? palette.led : palette.line).frame(width: 14, height: 2)
+                        }.frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(ConsoleStyle(selected: prefs.themeMode == mode))
+                    .accessibilityLabel(mode.label + " theme")
+                    .accessibilityAddTraits(prefs.themeMode == mode ? .isSelected : [])
+                }
+            }.padding(7).background(palette.background, in: RoundedRectangle(cornerRadius: 12))
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()
     }
 
-    private var simulator: some View {
-        Toggle(isOn: $prefs.simulatedPulse) {
-            Text("Simulated pulse").font(.chakra(14, .medium)).foregroundStyle(palette.readout)
-        }
-        .tint(palette.led)
-        .padding(16).panel()
-    }
-
-    private func row<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        HStack {
-            Text(title).font(.chakra(14, .medium)).foregroundStyle(palette.readout)
-            Spacer()
-            content()
+    /// Age is chosen on the built-in number wheel, not a drop-down.
+    private var aboutYou: some View {
+        SectionPanel(title: "About you", symbol: "person") {
+            HStack(alignment: .center) {
+                Text("Age").font(.chakra(18))
+                Spacer()
+                Picker("Age", selection: $prefs.age) {
+                    Text("Not set").tag(0)
+                    ForEach(18...100, id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.wheel).frame(width: 150, height: 110).clipped()
+            }
+            HStack(spacing: 7) {
+                ForEach(Sex.allCases, id: \.self) { sex in
+                    let on = prefs.sex == sex
+                    Button { prefs.sex = sex; DialClick.shared.play() } label: {
+                        VStack(spacing: 9) {
+                            Text(sex == .unspecified ? "Not set" : sex.rawValue.capitalized)
+                            Capsule().fill(on ? palette.led : palette.line).frame(width: 14, height: 2)
+                        }.frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(ConsoleStyle(selected: on))
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }.padding(7).background(palette.background, in: RoundedRectangle(cornerRadius: 12))
         }
     }
 }

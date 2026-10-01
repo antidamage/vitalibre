@@ -90,8 +90,11 @@ struct MeasureView: View {
         switch measurer.phase {
         case .idle, .result, .failed:
             Sounds.play(Sounds.start)
+            // The flash the reading settles on becomes the state the next reading starts from.
+            measurer.onFlashLearned = { used in prefs.workingFlash = used }
             measurer.start(simulate: isSimulator && prefs.simulatedPulse,
-                           age: prefs.age > 0 ? prefs.age : nil, sex: prefs.sex, usual: prefs.usual, calibration: prefs.calibration)
+                           age: prefs.age > 0 ? prefs.age : nil, sex: prefs.sex, usual: prefs.usual, calibration: prefs.calibration,
+                           flash: prefs.workingFlash)
         case .starting, .scanning:
             DialClick.shared.play()
             measurer.cancel()

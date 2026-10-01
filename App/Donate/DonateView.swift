@@ -16,19 +16,19 @@ struct DonateView: View {
     var body: some View {
         ZStack {
             ScrollView {
-                VStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        BodyText(text: "VitaLibre is free and always will be. Donations are entirely optional and unlock nothing. Thank you for your support.")
+                VStack(alignment: .leading, spacing: 20) {
+                    ScreenHeading(title: "Support VitaLibre", subtitle: "Optional. Appreciated. Never required.")
+                    SectionPanel(title: "Free forever", symbol: "heart") {
+                        Text("No ads. No subscription. Nothing to unlock.").font(.chakra(22)).foregroundStyle(palette.readout)
+                        Text("If this app is useful to you, a one-time donation helps support its development. The app works exactly the same whether you donate or not.")
+                            .font(.rajdhani(18)).foregroundStyle(palette.readoutSecondary)
                     }
-                    .padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()
-
-                    VStack(spacing: 12) {
-                        ForEach(Publisher.store.donations) { d in tierButton(d) }
-                        statusLine
+                    ForEach(Publisher.store.donations) { d in tierButton(d) }
+                    statusLine
+                    if case .unavailable = donations.status {
+                        Button("Retry App Store") { Task { await donations.load() } }.buttonStyle(ConsoleStyle())
                     }
-                    .padding(16).panel()
-                }
-                .padding(.horizontal, 16).padding(.vertical, 10)
+                }.padding(.horizontal, 22).padding(.bottom, 30).frame(maxWidth: 640).frame(maxWidth: .infinity)
             }
             ConfettiLayer(bursts: bursts)
         }
@@ -37,8 +37,12 @@ struct DonateView: View {
         .task { await donations.load() }
     }
 
+    private static let titles = ["A little support", "A generous contribution", "Something extraordinary"]
+    private static let symbols = ["heart", "heart.circle", "sparkles"]
+
     private func tierButton(_ d: StoreConfig.Donation) -> some View {
         let enabled = donations.available(d.tier) && !isBuying
+        let index = Publisher.store.donations.firstIndex { $0.tier == d.tier } ?? 0
         return Button {
             DialClick.shared.play()
             Task {
@@ -51,27 +55,16 @@ struct DonateView: View {
             }
         } label: {
             HStack {
-                Text(donations.price(d.tier)).font(.chakra(28, .light))
+                Image(systemName: Self.symbols[min(index, 2)]).font(.system(size: 24, weight: .light))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(Self.titles[min(index, 2)]).font(.chakra(15))
+                    Text("One-time donation").font(.rajdhani(15)).foregroundStyle(palette.readoutSecondary)
+                }
                 Spacer()
-            }
-            .foregroundStyle(enabled ? palette.readout : palette.readoutSecondary)
-            .padding(.horizontal, 18).frame(minHeight: 60)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(LinearGradient(colors: [palette.background.mixed(with: .white, palette.isLight ? 0.55 : 0.07),
-                                                  palette.background.mixed(with: .black, palette.isLight ? 0.07 : 0.35)],
-                                         startPoint: .top, endPoint: .bottom))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(LinearGradient(colors: [.white.opacity(palette.isLight ? 0.95 : 0.22), .clear,
-                                                          .black.opacity(palette.isLight ? 0.18 : 0.7)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5)
-            )
-            .shadow(color: .black.opacity(palette.isLight ? 0.22 : 0.6), radius: 7, y: 4)
-            .opacity(enabled ? 1 : 0.75)
+                Text(donations.price(d.tier)).font(.rajdhani(27))
+            }.frame(maxWidth: .infinity).padding(.vertical, 12)
         }
-        .buttonStyle(PressStyle())
+        .buttonStyle(ConsoleStyle())
         .disabled(!enabled)
         .background(GeometryReader { g in
             Color.clear.preference(key: TierFrames.self, value: [d.tier: g.frame(in: .named("donate"))])
@@ -84,18 +77,18 @@ struct DonateView: View {
     @ViewBuilder private var statusLine: some View {
         switch donations.status {
         case .unavailable:
-            note("Donations are not available yet.")
+            note("Donations are not available yet. Every feature remains free.")
         case .loading, .ready, .buying:
             EmptyView()
         case .thanks:
             Text("Thank you for your support.")
-                .font(.chakra(15, .medium)).foregroundStyle(palette.led).multilineTextAlignment(.center)
+                .font(.rajdhani(17)).foregroundStyle(palette.led)
         case .failed(let m):
             note(m)
         }
     }
 
     private func note(_ text: String) -> some View {
-        Text(text).font(.rajdhani(14)).foregroundStyle(palette.readoutSecondary).multilineTextAlignment(.center)
+        Text(text).font(.rajdhani(17)).foregroundStyle(palette.readoutSecondary)
     }
 }

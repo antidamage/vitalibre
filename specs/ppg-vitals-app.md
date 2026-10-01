@@ -228,6 +228,7 @@ These supersede anything above that disagrees.
   opacities 54/70/64%. Light: (0,245,255)@23, (0,255,115)@30, (0,143,255)@33, applied to
   `#00383B #004D23 #002F54`, opaque. Heartbeat trace core is `#FFE6D6` on dark and the LED
   colour on light, with the LED colour as its glow.
+- **Clipping**: the saturated fraction is measured on the GREEN channel (the one the pulse is read from). Red clips on nearly every pixel of a fingertip under the torch (measured on an Android phone: about 78-88% at red 250), so counting red made a correctly covered finger flip between "press more lightly" and "not covered".
 - **Flash**: held on for the whole scan. iOS can switch it off, so the torch state is
   checked twice a second and re-applied.
 - **Age** is a menu (Not set, 18-100). Sex is a menu.
@@ -262,3 +263,67 @@ These supersede anything above that disagrees.
 - **Dark ring colours (2026-10-01)**: red `#F00506`, red `#FF002C`, red-pink `#FF2A66`, painted at 80/90/80%. This departs from the dashboard's orange third stop (255,160,0) because the owner found it washed-out.
 - **First load**: a three-step intro (big text, big confirm button, disclaimer at the bottom); the disclaimer no longer sits on the Measure screen. Typical resting blood pressure is set under Calibration. The image share is a cropped screen capture of the orb.
 - **Licence**: GPL-3.0-or-later (`LICENSE`), shown in About. The Hermes plan chose the same licence.
+
+## Revisions, 2026-10-02 (waveform line, flash memory)
+
+- **Waveform line**: one stroke at 1 pt on iOS and 1 dp on Android - the same hairline on a phone, though a
+  point is 2-3 device pixels and not one - with butt caps and round joins, over two narrow
+  additive strokes that stand in for a glow (2.6 pt at 10%, 1.8 pt at 16%). The earlier 7 pt/4.5 pt
+  pair at 18%/30% read as a fat pixellated band rather than a line. The same numbers on both platforms
+  (`OrbPainter+Live.swift`; `OrbPainter.kt`, scaled by density).  
+  The crest dots moved out of the additive layer with it and shrank to `1.6 + 0.6 * pulse` pt, matching
+  Android; they were drawn additively at `2.4 + 1.2 * pulse` before.
+- **No curve fitting**: the trace is straight segments between samples, three samples per segment, with
+  the wrap back to the start of the circle skipped. Nothing is smoothed or overshot, so what is on
+  screen is the data that arrived.
+- **Clipped to the graph**: the trace layer, glow strokes included, is clipped to the ring band
+  (`OrbGeometry.ringInner`..`ringOuter`) on both platforms, so a sample at the end of the range cannot
+  draw outside the graph.
+- **Trace colours are the same on both platforms**: one height ramp per mode — dark `#4A0709`,
+  `#9E0F16`, `#E11D25`, `#FF5A4F`; light `#06262B`, `#0B5F63`, `#129C8E`, `#4FE3C1` — with the crest
+  flash `#FF2B2B` (dark) or `#1FD6B8` (light) added to the segment colour. The core stroke is painted
+  with ordinary blending so the red stays ruby; the orange cast came from the wide additive glow, which
+  is gone.
+- **Flash memory** (both platforms): a reading starts in the flash state the last reading with a result
+  settled on (`Preferences.workingFlash`, `Prefs.workingFlash`; nil = not known). With no memory the
+  flash starts off. The policy is one implementation per platform with the same constants
+  (`FlashPolicy.swift`; `CameraSource.regulateLight`):
+  - the flash is offered when 10 s of cover with the flash off still gives a weak pulse
+    (quality < 20), or when no finger has been recognised for 10 s;
+  - it is tried for 4 s and kept unless the flash-off figure was at least 5 better; a flash that fails
+    that comparison is switched off again and that preference is remembered;
+  - a scene whose mean channel value stays under 12 for a full second switches the flash on at once,
+    including against a remembered "off": a scene with nothing lit has nothing to read;
+  - a reading that ends in a result records the state it used; one that fails clears the memory, and so
+    does a camera reading that ends before the policy settled: a state the reading did not prove is never
+    kept. While a reading runs the torch is still re-applied twice a second;
+  - the reading is finalised as soon as the decision lands, and at the scan's own 45 s maximum either way,
+    so a trial that can never settle cannot hold a reading open;
+  - "no finger for 10 s" is measured from the last *covered* sample, so a finger that is on the lens never
+    trips it;
+  - the exposure, white-balance and focus lock is released when the torch switches and re-taken only after
+    a second of stable light, so the 4 s trial is compared on its own exposure, not the flash-off scene's.
+- **Saturation is counted on the green channel, on both platforms**: the `saturated` fraction that `covered`
+  and "press more lightly" use counts green pixels at full scale. iOS counted red, which clips on nearly
+  every pixel of a correctly covered fingertip under the torch, so a good finger could read as uncovered.
+  `Core/ScanSession.swift` and `android/core`'s `ScanSession.kt` both say green now.
+
+## Android build (branch `android`)
+
+Native Kotlin, Jetpack Compose and CameraX under `android/`; same design, theme, copy and numbers as the iOS build.
+`android/core` is a pure-JVM Kotlin port of `Core/` (geometry, filters, beat detector, heart rate, quality, BP estimator,
+calibration, scan session) with the same tests; `android/app` shares fonts, sounds, the model weights and the publisher
+config with the iOS build through the asset path instead of copying them.
+
+- **Readings run off the UI thread.** The camera analyser (raised priority) hands samples to a scan engine on its own
+  high-priority thread, which does the filtering, beat detection, live estimate, trace image and final analysis. The
+  UI receives finished updates only, so a slow frame cannot disturb a reading and a reading cannot stall the screen.
+  A watchdog ends a scan whose camera stops delivering frames.
+- **Cheap frames.** Everything that does not move is rendered once into an image; each frame draws only the lit grid,
+  the trace image, the sweep and the progress arc, in their own layer. The trace is rendered off the UI thread.
+- Torch held on by CameraX (state checked and re-applied); exposure and white balance locked after a second of cover.
+- Haptics through the vibrator, sounds through a sound pool, both from the engine thread.
+- The iOS build is the source of truth for screens, copy and behaviour; the Android screens match it (the calibration screen has the typical resting pressure and the cuff-calibration count with Reset, nothing more).
+- The synthetic pulse (for testing the scan path) exists only in debug builds; a release build cannot run it.
+- Not yet on Android: Play Billing donations (the buttons are inactive) and the confetti.
+- **Licences on Android**: the app is GPL-3.0-or-later like the iOS build (same `LICENSE`). Compose, CameraX and AndroidX are Apache-2.0, which is compatible with GPLv3 and is credited in About. The Android manifest requests only CAMERA and VIBRATE; there is no network permission, so the "nothing is sent" statement holds there too. Both font licences (Chakra Petch, Rajdhani) ship in `App/Resources/Fonts`.

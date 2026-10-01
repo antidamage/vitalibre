@@ -56,31 +56,6 @@ struct BodyText: View {
     }
 }
 
-/// One label in the bottom bar: no plate of its own, the bar is the surface.
-struct ConsoleButton: View {
-    @Environment(\.palette) private var palette
-    let title: String
-    let symbol: String
-    let active: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.system(size: 18, weight: .regular))
-                Text(title.uppercased()).font(.chakra(10, .medium)).tracking(1.2).lineLimit(1).minimumScaleFactor(0.7)
-            }
-            .foregroundStyle(active ? palette.led : palette.clock)
-            .shadow(color: active ? palette.led.opacity(0.7) : .black.opacity(palette.isLight ? 0 : 0.6), radius: active ? 6 : 1, y: active ? 0 : 1)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PressStyle())
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(active ? [.isSelected] : [])
-    }
-}
-
 /// Sinks a little when pressed, like a moulded key.
 struct PressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -91,21 +66,8 @@ struct PressStyle: ButtonStyle {
     }
 }
 
-/// A vertical groove cut into the bar: a dark line with a light line beside it, fading at the ends.
-struct SunkenDivider: View {
-    @Environment(\.palette) private var palette
-    var body: some View {
-        HStack(spacing: 0) {
-            Rectangle().fill(.black.opacity(palette.isLight ? 0.28 : 0.85)).frame(width: 1)
-            Rectangle().fill(.white.opacity(palette.isLight ? 0.95 : 0.14)).frame(width: 1)
-        }
-        .frame(height: 38)
-        .mask(LinearGradient(colors: [.clear, .black, .black, .clear], startPoint: .top, endPoint: .bottom))
-    }
-}
-
-/// A single bar across the whole width, square at the sides and bottom. Its top edge is a
-/// rounded bullnose, shown by lighting: a lit crest, then falling away into shade.
+/// The bottom navigation of the Codex build: console-style buttons with a symbol, a label and a small
+/// indicator that lights for the current tab, on a surface with a lit top edge.
 struct ConsoleBar<Tab: Hashable>: View {
     @Environment(\.palette) private var palette
     struct Item { let tab: Tab; let title: String; let symbol: String }
@@ -114,38 +76,28 @@ struct ConsoleBar<Tab: Hashable>: View {
     let onSelect: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 5) {
             ForEach(items.indices, id: \.self) { i in
-                if i > 0 { SunkenDivider() }
-                ConsoleButton(title: items[i].title, symbol: items[i].symbol, active: items[i].tab == selection) {
+                let item = items[i]
+                let selected = item.tab == selection
+                Button {
                     onSelect()
-                    selection = items[i].tab
+                    selection = item.tab
+                } label: {
+                    VStack(spacing: 7) {
+                        Image(systemName: item.symbol).font(.system(size: 17, weight: .light))
+                        Text(item.title).font(.chakra(10)).lineLimit(1).minimumScaleFactor(0.7)
+                        Capsule().fill(selected ? palette.led : palette.line).frame(width: 13, height: 2)
+                    }.frame(maxWidth: .infinity)
                 }
+                .buttonStyle(ConsoleStyle(selected: selected))
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .padding(.top, 10).padding(.bottom, 2)
-        .frame(maxWidth: .infinity)
-        .background(surface.ignoresSafeArea(edges: .bottom))
-    }
-
-    private var surface: some View {
-        let base = palette.background.mixed(with: .black, palette.isLight ? 0.04 : 0.28)
-        return Rectangle()
-            .fill(LinearGradient(colors: [base.mixed(with: .white, palette.isLight ? 0.5 : 0.07), base,
-                                          base.mixed(with: .black, palette.isLight ? 0.05 : 0.3)],
-                                 startPoint: .top, endPoint: .bottom))
-            .overlay(alignment: .top) {
-                // The rounded top: a bright crest line, then a soft band curving away.
-                VStack(spacing: 0) {
-                    Rectangle().fill(.white.opacity(palette.isLight ? 1 : 0.22)).frame(height: 1)
-                    LinearGradient(colors: [.white.opacity(palette.isLight ? 0.6 : 0.10), .clear],
-                                   startPoint: .top, endPoint: .bottom).frame(height: 14)
-                }
-            }
-            .overlay(alignment: .top) {
-                Rectangle().fill(.black.opacity(palette.isLight ? 0.12 : 0.55)).frame(height: 1).offset(y: -1)
-            }
-            .shadow(color: .black.opacity(palette.isLight ? 0.18 : 0.7), radius: 9, y: -3)
+        .padding(10)
+        .background(palette.surface.ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) { Rectangle().fill(palette.edge).frame(height: 1) }
     }
 }
 

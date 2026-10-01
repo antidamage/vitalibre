@@ -6,3 +6,9 @@ xcuserdata/
 .DS_Store
 *.log
 bash.exe.stackdump
+
+# Android
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.kotlin/

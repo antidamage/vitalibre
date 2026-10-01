@@ -262,3 +262,21 @@ These supersede anything above that disagrees.
 - **Dark ring colours (2026-10-01)**: red `#F00506`, red `#FF002C`, red-pink `#FF2A66`, painted at 80/90/80%. This departs from the dashboard's orange third stop (255,160,0) because the owner found it washed-out.
 - **First load**: a three-step intro (big text, big confirm button, disclaimer at the bottom); the disclaimer no longer sits on the Measure screen. Typical resting blood pressure is set under Calibration. The image share is a cropped screen capture of the orb.
 - **Licence**: GPL-3.0-or-later (`LICENSE`), shown in About. The Hermes plan chose the same licence.
+
+## Android build (branch `android`)
+
+Native Kotlin, Jetpack Compose and CameraX under `android/`; same design, theme, copy and numbers as the iOS build.
+`android/core` is a pure-JVM Kotlin port of `Core/` (geometry, filters, beat detector, heart rate, quality, BP estimator,
+calibration, scan session) with the same tests; `android/app` shares fonts, sounds, the model weights and the publisher
+config with the iOS build through the asset path instead of copying them.
+
+- **Readings run off the UI thread.** The camera analyser (raised priority) hands samples to a scan engine on its own
+  high-priority thread, which does the filtering, beat detection, live estimate, trace image and final analysis. The
+  UI receives finished updates only, so a slow frame cannot disturb a reading and a reading cannot stall the screen.
+  A watchdog ends a scan whose camera stops delivering frames.
+- **Cheap frames.** Everything that does not move is rendered once into an image; each frame draws only the lit grid,
+  the trace image, the sweep and the progress arc, in their own layer. The trace is rendered off the UI thread.
+- Torch held on by CameraX (state checked and re-applied); exposure and white balance locked after a second of cover.
+- Haptics through the vibrator, sounds through a sound pool, both from the engine thread.
+- Calibration screen lists cuff readings with an Add button (enabled while a result is on screen) and removal.
+- Not yet on Android: Play Billing donations (the buttons are inactive) and the confetti.

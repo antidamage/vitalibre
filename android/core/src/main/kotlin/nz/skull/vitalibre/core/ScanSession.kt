@@ -58,13 +58,16 @@ class ScanResult(
     /** The model's value before calibration, kept so a cuff reading can be paired with this scan. */
     val rawSystolic: Double,
     val rawDiastolic: Double,
+    /** The starting point the raw value was built on, kept so a cuff pairing can remember it. */
+    val baseSystolic: Double,
+    val baseDiastolic: Double,
     /** The whole run's filtered waveform, normalised -1..1 at the analysis rate, for the graph kept on screen. */
     val trace: DoubleArray,
     /** Seconds from the run's start to the trace's last sample. */
     val traceEnd: Double,
 ) {
     fun withBP(bp: BPRange) = ScanResult(heartRate, bp, quality, level, duration, intervals, modelVersion, features,
-        rawSystolic, rawDiastolic, trace, traceEnd)
+        rawSystolic, rawDiastolic, baseSystolic, baseDiastolic, trace, traceEnd)
 }
 
 /** What the orb shows while a scan is still running. */
@@ -203,6 +206,7 @@ class ScanSession(initial: List<PPGSample> = emptyList()) {
                     ScanResult(
                         hr.bpm, BPEstimator.estimate(feats, model, age, sex, usual, calibration), q.score, q.level,
                         run.duration, hr.intervals, model.version, feats, raw.first, raw.second,
+                        BPEstimator.baseline(model, age, sex, usual).first, BPEstimator.baseline(model, age, sex, usual).second,
                         normalised(w.filtered), w.start + (w.filtered.size - 1) / fs,
                     ),
                 )

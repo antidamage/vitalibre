@@ -253,9 +253,20 @@ class CalibrationTests {
     @Test fun rangeNarrowsToObservedErrorAfterThreePoints() {
         var cal = BPCalibration()
         for ((rs, cs) in listOf(118.0 to 130.0, 121.0 to 132.0, 119.0 to 129.0)) cal = cal.with(point(rs, 78.0, cs, 84.0))
-        val w = cal.halfWidths(14.0, 9.0)
+        val w = cal.halfWidths(14.0, 9.0, 120.0 to 78.0, 120.0 to 78.0)
         assertTrue(w.first < 14 && w.first >= BPCalibration.MIN_HALF_WIDTH_SYSTOLIC)
-        near(11.0, cal.offset.first, 0.001)
+        near(11.0, cal.offset(120.0 to 78.0, 120.0 to 78.0).first, 0.001)
+    }
+
+    @Test fun changingTheStartingPointDoesNotDoubleCountAnOldPairing() {
+        // Paired when the starting point was 118/76 (raw 122/80: a +4/+4 pulse adjustment) against a cuff of 126/84.
+        val cal = BPCalibration().with(CalibrationPoint(122.0, 80.0, 126.0, 84.0, 0.0, null, 118.0, 76.0))
+        // Now a typical pressure of 120/80 is set; the same +4 adjustment must still give about 126/84, not 128/88.
+        val usual = UsualBP(120, 80)
+        val f = features()
+        val adj = BPEstimator.raw(f, testModel(), null, Sex.UNSPECIFIED, usual).first - 120
+        val r = BPEstimator.estimate(f, testModel(), null, Sex.UNSPECIFIED, usual, cal)
+        near(126.0 + (adj - 4), r.systolic.toDouble(), 1.0)
     }
 
     @Test fun implausibleCuffReadingsAreRejected() {
@@ -267,7 +278,7 @@ class CalibrationTests {
     }
 
     @Test fun offsetIsCapped() {
-        assertEquals(BPCalibration.MAX_OFFSET, BPCalibration().with(point(60.0, 40.0, 200.0, 120.0)).offset.first)
+        assertEquals(BPCalibration.MAX_OFFSET, BPCalibration().with(point(60.0, 40.0, 200.0, 120.0)).offset(120.0 to 78.0, 120.0 to 78.0).first)
     }
 }
 

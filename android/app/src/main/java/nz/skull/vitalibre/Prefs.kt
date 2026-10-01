@@ -81,7 +81,8 @@ class Prefs(context: Context) {
         val arr = JSONArray()
         for (p in c.points) {
             arr.put(JSONObject().put("rs", p.rawSystolic).put("rd", p.rawDiastolic).put("cs", p.cuffSystolic)
-                .put("cd", p.cuffDiastolic).put("t", p.epochSeconds).put("device", p.device ?: JSONObject.NULL))
+                .put("cd", p.cuffDiastolic).put("t", p.epochSeconds).put("device", p.device ?: JSONObject.NULL)
+                .put("bs", p.baseSystolic ?: JSONObject.NULL).put("bd", p.baseDiastolic ?: JSONObject.NULL))
         }
         sp.edit().putString("bpCalibration", arr.toString()).apply()
     }
@@ -93,7 +94,9 @@ class Prefs(context: Context) {
             BPCalibration((0 until arr.length()).map {
                 val o = arr.getJSONObject(it)
                 CalibrationPoint(o.getDouble("rs"), o.getDouble("rd"), o.getDouble("cs"), o.getDouble("cd"), o.getDouble("t"),
-                    if (o.isNull("device")) null else o.getString("device"))
+                    if (o.isNull("device")) null else o.getString("device"),
+                    if (!o.has("bs") || o.isNull("bs")) null else o.getDouble("bs"),
+                    if (!o.has("bd") || o.isNull("bd")) null else o.getDouble("bd"))
             })
         } catch (e: Exception) {
             BPCalibration()

@@ -10,6 +10,9 @@ data class CalibrationPoint(
     val epochSeconds: Double,
     /** Phone model the pair was taken on; null for older points. */
     val device: String? = null,
+    /** The starting point (age prior or typical resting pressure) the raw value was built on; null for older points, which used the model's own base. */
+    val baseSystolic: Double? = null,
+    val baseDiastolic: Double? = null,
 ) {
     companion object {
         fun isPlausible(systolic: Double, diastolic: Double): Boolean =
@@ -24,20 +27,29 @@ data class CalibrationPoint(
 data class BPCalibration(val points: List<CalibrationPoint> = emptyList()) {
     val count get() = points.size
 
-    val offset: Pair<Double, Double>
-        get() {
-            if (points.isEmpty()) return 0.0 to 0.0
-            val s = points.map { it.cuffSystolic - it.rawSystolic }.average()
-            val d = points.map { it.cuffDiastolic - it.rawDiastolic }.average()
-            return max(-MAX_OFFSET, min(MAX_OFFSET, s)) to max(-MAX_OFFSET, min(MAX_OFFSET, d))
-        }
+    /**
+     * What each pairing says the estimate should shift by, measured against the CURRENT starting point. A pairing
+     * stores the raw value (starting point plus the pulse adjustment) it was made on; if the starting point has
+     * changed since (a typical pressure was set, say), the old gap would otherwise be counted on top of a baseline
+     * that already includes it.
+     */
+    private fun gaps(base: Pair<Double, Double>, legacy: Pair<Double, Double>): Pair<DoubleArray, DoubleArray> = Pair(
+        DoubleArray(points.size) { val p = points[it]; p.cuffSystolic - base.first - (p.rawSystolic - (p.baseSystolic ?: legacy.first)) },
+        DoubleArray(points.size) { val p = points[it]; p.cuffDiastolic - base.second - (p.rawDiastolic - (p.baseDiastolic ?: legacy.second)) },
+    )
+
+    fun offset(base: Pair<Double, Double>, legacy: Pair<Double, Double>): Pair<Double, Double> {
+        if (points.isEmpty()) return 0.0 to 0.0
+        val g = gaps(base, legacy)
+        return max(-MAX_OFFSET, min(MAX_OFFSET, g.first.average())) to max(-MAX_OFFSET, min(MAX_OFFSET, g.second.average()))
+    }
 
     /** Half-widths for the displayed range. `fallback` is the model's population figure. */
-    fun halfWidths(fallbackSystolic: Double, fallbackDiastolic: Double): Pair<Double, Double> {
+    fun halfWidths(fallbackSystolic: Double, fallbackDiastolic: Double, base: Pair<Double, Double>, legacy: Pair<Double, Double>): Pair<Double, Double> {
         if (points.size < MIN_POINTS_FOR_NARROWING) return fallbackSystolic to fallbackDiastolic
-        val (os, od) = offset
-        val s = Stats.std(DoubleArray(points.size) { points[it].cuffSystolic - points[it].rawSystolic - os })
-        val d = Stats.std(DoubleArray(points.size) { points[it].cuffDiastolic - points[it].rawDiastolic - od })
+        val g = gaps(base, legacy)
+        val s = Stats.std(g.first)
+        val d = Stats.std(g.second)
         return max(MIN_HALF_WIDTH_SYSTOLIC, min(fallbackSystolic, 1.64 * s)) to
             max(MIN_HALF_WIDTH_DIASTOLIC, min(fallbackDiastolic, 1.64 * d))
     }

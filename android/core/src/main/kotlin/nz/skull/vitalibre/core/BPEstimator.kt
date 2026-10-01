@@ -90,8 +90,8 @@ object BPEstimator {
         else -> 0.0
     }
 
-    /** The model's own value before any calibration. */
-    fun raw(f: BPFeatures, model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = null): Pair<Double, Double> {
+    /** The starting point before any pulse adjustment: the typical resting pressure if given, else the age and sex prior. */
+    fun baseline(model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = null): Pair<Double, Double> {
         var sys = model.baseSystolic
         var dia = model.baseDiastolic
         val haveUsual = usual != null && usual.isPlausible
@@ -106,6 +106,12 @@ object BPEstimator {
             if (sex == Sex.MALE) { sys += model.maleSystolicOffset; dia += model.maleDiastolicOffset }
             if (sex == Sex.FEMALE) { sys -= model.maleSystolicOffset; dia -= model.maleDiastolicOffset }
         }
+        return sys to dia
+    }
+
+    /** The model's own value before any calibration: the starting point plus the capped pulse adjustment. */
+    fun raw(f: BPFeatures, model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = null): Pair<Double, Double> {
+        var (sys, dia) = baseline(model, age, sex, usual)
         var dSys = 0.0
         var dDia = 0.0
         for (t in model.terms) {
@@ -122,11 +128,13 @@ object BPEstimator {
         f: BPFeatures, model: BPModel, age: Int?, sex: Sex, usual: UsualBP? = null,
         calibration: BPCalibration = BPCalibration(),
     ): BPRange {
+        val base = baseline(model, age, sex, usual)
+        val legacy = model.baseSystolic to model.baseDiastolic
         val (rs, rd) = raw(f, model, age, sex, usual)
-        val (os, od) = calibration.offset
+        val (os, od) = calibration.offset(base, legacy)
         val s = Math.round(rs + os).toInt()
         val d = Math.round(rd + od).toInt()
-        val (ws, wd) = calibration.halfWidths(model.halfWidthSystolic, model.halfWidthDiastolic)
+        val (ws, wd) = calibration.halfWidths(model.halfWidthSystolic, model.halfWidthDiastolic, base, legacy)
         val ls = Math.round(ws).toInt()
         val ld = Math.round(wd).toInt()
         return BPRange(s - ls, s + ls, d - ld, d + ld, s, d, calibration.count > 0 || usual?.isPlausible == true)

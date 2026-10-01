@@ -134,7 +134,7 @@ fun MeasureScreen() {
 /** Pairs a cuff reading with the scan on screen and refreshes the shown estimate. */
 fun addCuffReading(env: AppEnv, result: ScanResult, cuffSystolic: Int, cuffDiastolic: Int) {
     env.prefs.addCalibration(CalibrationPoint(result.rawSystolic, result.rawDiastolic, cuffSystolic.toDouble(), cuffDiastolic.toDouble(),
-        System.currentTimeMillis() / 1000.0, android.os.Build.MODEL))
+        System.currentTimeMillis() / 1000.0, android.os.Build.MODEL, result.baseSystolic, result.baseDiastolic))
     env.measurer.recalibrate(env.prefs.calibration, if (env.prefs.age > 0) env.prefs.age else null, env.prefs.sex, env.prefs.usual)
 }
 

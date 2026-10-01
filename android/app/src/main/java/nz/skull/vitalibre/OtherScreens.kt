@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -76,39 +77,35 @@ fun ReadingsScreen() {
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.weight(1f).panel(12).padding(3.dp)) {
-                for ((label, on) in listOf("All" to !starredOnly, "⭐ Starred" to starredOnly)) {
-                    Box(
-                        Modifier.weight(1f).clickable { Sounds.play(Sounds.CLICK); starredOnly = label != "All" }
-                            .background(if (on) p.background.mixed(Color.Black, if (p.isLight) 0.06f else 0.35f) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(9.dp))
-                            .padding(vertical = 9.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text(label, color = if (on) p.led else p.clock, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM)) }
-                }
+            for ((label, on) in listOf("All" to !starredOnly, "⭐ Starred" to starredOnly)) {
+                Box(
+                    Modifier.console(on).pressable({ Sounds.play(Sounds.CLICK); starredOnly = label != "All" }).padding(horizontal = 16.dp, vertical = 13.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text(label, color = if (on) p.readout else p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM)) }
             }
-            Box(Modifier.size(44.dp).clickable(enabled = store.readings.isNotEmpty()) { env.activity.shareText(store.exportText()) }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Share, "Export all readings as text", tint = p.clock, modifier = Modifier.size(20.dp))
+            Box(Modifier.weight(1f))
+            Box(Modifier.size(46.dp).console().pressable({ env.activity.shareText(store.exportText()) }, enabled = store.readings.isNotEmpty()), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Share, "Export all readings as text", tint = p.readoutSecondary, modifier = Modifier.size(20.dp))
             }
         }
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
             items(shown, key = { it.id }) { r ->
                 val state = rememberSwipeToDismissBoxState(confirmValueChange = {
                     if (it == SwipeToDismissBoxValue.EndToStart) { store.delete(r.id); true } else false
                 })
                 SwipeToDismissBox(state, backgroundContent = {}, enableDismissFromStartToEnd = false) {
-                    Row(
-                        Modifier.fillMaxWidth().panel(14).clickable { store.toggleStar(r.id) }.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    val shape = InstrumentShape()
+                    Column(
+                        Modifier.fillMaxWidth().background(p.surface, shape).border(1.dp, p.edge, shape).clickable { store.toggleStar(r.id) }.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text(if (r.starred) "⭐" else "☆", color = p.clock, fontSize = 20.sp, modifier = Modifier.size(28.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(df.format(Date(r.epochMillis)), color = p.readoutSecondary, style = Fonts.rajdhani(14.sp))
-                            Text(r.bp.text, color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM))
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("${r.heartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(48.sp))
+                            Text("BPM", color = p.readoutSecondary, style = Fonts.chakra(11.sp, Fonts.Face.MEDIUM), modifier = Modifier.padding(bottom = 10.dp).weight(1f))
+                            Text(if (r.starred) "⭐" else "☆", color = p.led, fontSize = 20.sp)
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("${r.heartRate.roundToInt()}", color = p.readout, style = Fonts.chakra(30.sp, Fonts.Face.LIGHT))
-                            Text("BPM", color = p.readoutSecondary, style = Fonts.rajdhani(11.sp, true), letterSpacing = 1.sp)
-                        }
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(p.line))
+                        DataRow(df.format(Date(r.epochMillis)), r.bp.text)
                     }
                 }
             }
@@ -134,9 +131,18 @@ private val sources = listOf(
 
 @Composable
 private fun Card(title: String, paragraphs: List<String>) {
-    Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionTitle(title)
-        paragraphs.forEach { BodyText(it) }
+    SectionPanel(title) { paragraphs.forEach { BodyText(it) } }
+}
+
+@Composable
+private fun StepLine(number: String, title: String, detail: String) {
+    val p = LocalPalette.current
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(number, color = p.led, style = Fonts.rajdhani(25.sp))
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, color = p.readout, style = Fonts.chakra(16.sp, Fonts.Face.REGULAR))
+            Text(detail, color = p.readoutSecondary, style = Fonts.rajdhani(16.sp))
+        }
     }
 }
 
@@ -144,7 +150,13 @@ private fun Card(title: String, paragraphs: List<String>) {
 fun HelpScreen() {
     val p = LocalPalette.current
     val ctx = LocalContext.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        ScreenHeading("A little guidance", "A steady finger. A clearer signal.")
+        SectionPanel("Taking a reading") {
+            StepLine("01", "Sit comfortably", "Rest your hand and allow a moment to settle.")
+            StepLine("02", "Cover the camera", "Use your fingertip, with light pressure. Keep the hand at heart height and don't talk.")
+            StepLine("03", "Tap the orb", "Hold still for ${ScanSession.TARGET_SECONDS.toInt()} seconds.")
+        }
         Card("How it works", listOf(
             "Each time your heart beats, a little more blood fills the fingertip. Blood absorbs green light, so the fingertip lets through very slightly less green on every beat.",
             "With your finger over the rear camera and the flash on, the app averages the green channel of a square in the middle of every frame. That gives one number per frame. The pulse is only about 1% of that number, so most of the work is recovering it.",
@@ -164,10 +176,9 @@ fun HelpScreen() {
         ))
         Card(Publisher.freeForeverTitle, listOf(Publisher.freeForever))
         Card(Publisher.nothingSentTitle, listOf(Publisher.nothingSent))
-        Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionTitle("Further reading and sources")
+        SectionPanel("Further reading") {
             for (s in sources) {
-                Text("${s.title}  ↗", color = p.led, style = Fonts.rajdhani(15.sp, true),
+                Text("${s.title}  ↗", color = p.led, style = Fonts.rajdhani(17.sp),
                     modifier = Modifier.clickable { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(s.url))) })
             }
         }
@@ -181,38 +192,24 @@ fun AboutScreen() {
     val p = LocalPalette.current
     val ctx = LocalContext.current
     val version = remember { ctx.packageManager.getPackageInfo(ctx.packageName, 0).let { "${it.versionName} (${it.longVersionCode})" } }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionTitle(Publisher.displayName)
-            aboutRow("Version", version)
-            aboutRow("Model", Publisher.model.version)
-            aboutRow("Licence", "GPL-3.0-or-later")
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp).padding(bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        SectionPanel(Publisher.displayName) {
+            DataRow("Version", version)
+            DataRow("Model", Publisher.model.version)
+            DataRow("Licence", "GPL-3.0-or-later")
         }
-        Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionTitle("Regulatory")
-            BodyText(Publisher.regulatory)
-        }
-        Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionTitle("Third-party notices")
+        SectionPanel("Regulatory") { BodyText(Publisher.regulatory) }
+        SectionPanel("Third-party notices") {
             BodyText("Chakra Petch, © 2018 The Chakra Petch Project Authors, SIL Open Font License 1.1.")
             BodyText("Rajdhani, by Indian Type Foundry, SIL Open Font License 1.1.")
             BodyText("Jetpack Compose, CameraX and the other AndroidX libraries, © The Android Open Source Project, Apache License 2.0.")
             BodyText("The beat detector reimplements the published algorithm of Elgendi et al. (PLoS ONE 2013). The blood pressure approach follows the survey by Frey, Menon and Elgendi (npj Digital Medicine 2022, CC BY 4.0). No code or figures are copied from either.")
             BodyText("The dial click is from the owner's own dashboard sound set.")
             if (Publisher.sourceURL.isNotEmpty()) {
-                Text("Source code", color = p.led, style = Fonts.rajdhani(16.sp, true),
+                Text("Source code ↗", color = p.led, style = Fonts.rajdhani(17.sp),
                     modifier = Modifier.clickable { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Publisher.sourceURL))) })
             }
         }
-    }
-}
-
-@Composable
-private fun aboutRow(label: String, value: String) {
-    val p = LocalPalette.current
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = p.readoutSecondary, style = Fonts.rajdhani(15.sp))
-        Text(value, color = p.readout, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM))
     }
 }
 
@@ -221,20 +218,24 @@ private fun aboutRow(label: String, value: String) {
 @Composable
 fun DonateScreen() {
     val p = LocalPalette.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Column(Modifier.fillMaxWidth().panel().padding(16.dp)) {
-            BodyText("VitaLibre is free and always will be. Donations are entirely optional and unlock nothing. Thank you for your support.")
+    val titles = listOf("A little support", "A generous contribution", "Something extraordinary")
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        ScreenHeading("Support VitaLibre", "Optional. Appreciated. Never required.")
+        SectionPanel("Free forever") {
+            Text("No ads. No subscription. Nothing to unlock.", color = p.readout, style = Fonts.chakra(22.sp, Fonts.Face.REGULAR))
+            BodyText("If this app is useful to you, a one-time donation helps support its development. The app works exactly the same whether you donate or not.")
         }
-        Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            for (d in Publisher.donations) {
-                // Embossed in the background's own colours. Play Billing is not wired up yet, so these stay inactive.
-                Box(
-                    Modifier.fillMaxWidth().embossed(14).padding(horizontal = 18.dp).height(60.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) { Text(d.fallbackPrice, color = p.readoutSecondary, style = Fonts.chakra(28.sp, Fonts.Face.LIGHT)) }
+        // Play Billing is not wired up yet, so the tiers stay inactive.
+        Publisher.donations.forEachIndexed { i, d ->
+            Row(Modifier.fillMaxWidth().console().padding(horizontal = 12.dp, vertical = 14.dp).alpha(0.6f), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(titles.getOrElse(i) { "Donation" }, color = p.readout, style = Fonts.chakra(15.sp, Fonts.Face.REGULAR))
+                    Text("One-time donation", color = p.readoutSecondary, style = Fonts.rajdhani(15.sp))
+                }
+                Text(d.fallbackPrice, color = p.readout, style = Fonts.rajdhani(27.sp))
             }
-            Text("Donations are not available yet.", color = p.readoutSecondary, style = Fonts.rajdhani(14.sp))
         }
+        Text("Donations are not available yet. Every feature remains free.", color = p.readoutSecondary, style = Fonts.rajdhani(17.sp))
     }
 }
 
@@ -272,43 +273,39 @@ fun SettingsDialog(onDismiss: () -> Unit) {
     val prefs = env.prefs
     var showCalibration by remember { mutableStateOf(false) }
     FullDialog(onDismiss) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("SETTINGS", color = p.clock, style = Fonts.chakra(15.sp, Fonts.Face.MEDIUM), letterSpacing = 3.sp)
-                Text("Done", color = p.led, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM), modifier = Modifier.clickable { onDismiss() })
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Box(Modifier.weight(1f)) { ScreenHeading("Settings", "Make yourself comfortable.") }
+                Text("Done", color = p.led, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM), modifier = Modifier.padding(top = 22.dp).clickable { onDismiss() })
             }
-            Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle("Theme")
-                Row(Modifier.fillMaxWidth().background(p.background.mixed(Color.Black, if (p.isLight) 0.03f else 0.15f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(3.dp)) {
-                    for (mode in ThemeMode.entries) {
-                        val on = prefs.themeMode == mode
-                        Box(
-                            Modifier.weight(1f).clickable { Sounds.play(Sounds.CLICK); prefs.changeTheme(mode) }
-                                .background(if (on) p.background.mixed(Color.Black, if (p.isLight) 0.06f else 0.35f) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(9.dp))
-                                .padding(vertical = 11.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text(mode.label, color = if (on) p.led else p.clock, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM)) }
-                    }
+            SectionPanel("Appearance") {
+                Text("Colour theme", color = p.readout, style = Fonts.chakra(18.sp, Fonts.Face.REGULAR))
+                Text("Auto follows your device.", color = p.readoutSecondary, style = Fonts.rajdhani(16.sp))
+                ConsoleChoice(ThemeMode.entries.map { it.label to it }, prefs.themeMode) { prefs.changeTheme(it) }
+            }
+            SectionPanel("About you") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Age", color = p.readout, style = Fonts.chakra(18.sp, Fonts.Face.REGULAR))
+                    NumberWheel(listOf(0) + (18..100), prefs.age, labels = listOf("Not set") + (18..100).map { "$it" }) { prefs.changeAge(it) }
+                }
+                ConsoleChoice(Sex.entries.map { (if (it == Sex.UNSPECIFIED) "Not set" else it.name.lowercase().replaceFirstChar { c -> c.uppercase() }) to it }, prefs.sex) { prefs.changeSex(it) }
+            }
+            SectionPanel("Calibration") {
+                Row(Modifier.fillMaxWidth().console().pressable({ showCalibration = true }).padding(horizontal = 12.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Typical pressure and cuff readings", color = p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM))
+                    Text("›", color = p.readoutSecondary, style = Fonts.chakra(18.sp))
                 }
             }
-            Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SettingRow("Age") {
-                    MenuPicker(if (prefs.age == 0) "Not set" else "${prefs.age}", listOf("Not set" to 0) + (18..100).map { "$it" to it }, { prefs.changeAge(it) })
-                }
-                SettingRow("Sex") {
-                    MenuPicker(if (prefs.sex == Sex.UNSPECIFIED) "Not set" else prefs.sex.name.lowercase().replaceFirstChar { it.uppercase() },
-                        Sex.entries.map { (if (it == Sex.UNSPECIFIED) "Not set" else it.name.lowercase().replaceFirstChar { c -> c.uppercase() }) to it }, { prefs.changeSex(it) })
-                }
+            SectionPanel("Your data") {
+                DataRow("Storage", "On this device")
+                DataRow("Account", "Not required")
+                BodyText("Readings stay here. Nothing is sent to the developer or third parties. You choose what to share using the share sheet.")
             }
-            Row(Modifier.fillMaxWidth().panel().clickable { showCalibration = true }.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Calibration", color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM))
-                Text("›", color = p.clock, style = Fonts.chakra(18.sp))
-            }
-            Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle("Not a medical device")
+            SectionPanel("Not a medical device") {
                 BodyText(Publisher.disclaimerBody)
-                Text("Show the intro again", color = p.led, style = Fonts.chakra(12.sp, Fonts.Face.MEDIUM),
-                    modifier = Modifier.clickable { prefs.setOnboarded(false); onDismiss() })
+                Box(Modifier.fillMaxWidth().console().pressable({ prefs.setOnboarded(false); onDismiss() }).padding(14.dp), contentAlignment = Alignment.Center) {
+                    Text("Show the intro again", color = p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM))
+                }
             }
         }
     }
@@ -322,37 +319,32 @@ fun CalibrationDialog(onDismiss: () -> Unit) {
     val p = LocalPalette.current
     val prefs = env.prefs
     FullDialog(onDismiss) {
-        Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("CALIBRATION", color = p.clock, style = Fonts.chakra(15.sp, Fonts.Face.MEDIUM), letterSpacing = 3.sp)
-                Text("Done", color = p.led, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM), modifier = Modifier.clickable { prefs.confirmUsual(); onDismiss() })
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Box(Modifier.weight(1f)) { ScreenHeading("Calibration", "Your typical resting pressure.") }
+                Text("Done", color = p.led, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM), modifier = Modifier.padding(top = 22.dp).clickable { prefs.confirmUsual(); onDismiss() })
             }
-            Column(Modifier.fillMaxWidth().panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionTitle("Typical resting blood pressure")
+            SectionPanel("Typical resting blood pressure") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("SYSTOLIC", color = p.readoutSecondary, style = Fonts.rajdhani(12.sp, true), letterSpacing = 1.5.sp)
-                        MenuPicker("${prefs.usualSystolic}", (70..220).map { "$it" to it }, { prefs.changeUsualSystolic(it) })
+                        NumberWheel((70..220).toList(), prefs.usualSystolic) { prefs.changeUsualSystolic(it) }
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("DIASTOLIC", color = p.readoutSecondary, style = Fonts.rajdhani(12.sp, true), letterSpacing = 1.5.sp)
-                        MenuPicker("${prefs.usualDiastolic}", (40..140).map { "$it" to it }, { prefs.changeUsualDiastolic(it) })
+                        NumberWheel((40..140).toList(), prefs.usualDiastolic) { prefs.changeUsualDiastolic(it) }
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().panel().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Cuff calibrations", color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${prefs.calibration.count}", color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM))
-                    if (prefs.calibration.count > 0 || prefs.usualConfirmed) {
-                        Text("Reset", color = p.led, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM), modifier = Modifier.clickable { prefs.resetAllCalibration() })
+            SectionPanel("Cuff calibrations") {
+                DataRow("Saved", "${prefs.calibration.count}")
+                if (prefs.calibration.count > 0 || prefs.usualConfirmed) {
+                    Box(Modifier.fillMaxWidth().console().pressable({ prefs.resetAllCalibration() }).padding(14.dp), contentAlignment = Alignment.Center) {
+                        Text("Reset", color = p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM))
                     }
                 }
             }
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).panel().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle(Publisher.calibrationHowTitle)
-                Publisher.calibrationHow.split("\n\n").forEach { BodyText(it) }
-            }
+            SectionPanel(Publisher.calibrationHowTitle) { Publisher.calibrationHow.split("\n\n").forEach { BodyText(it) } }
         }
     }
 }

@@ -73,7 +73,7 @@ fun MeasureScreen() {
                 Sounds.play(Sounds.START)
                 savedId = null
                 env.activity.ensureCamera(
-                    onGranted = { m.start(env.activity, p, if (prefs.age > 0) prefs.age else null, prefs.sex, prefs.usual, prefs.calibration, env.activity.simulate) },
+                    onGranted = { m.start(env.activity, p, if (prefs.age > 0) prefs.age else null, prefs.sex, prefs.usual, prefs.calibration, env.activity.simulate, prefs.workingFlash) { prefs.rememberFlash(it) } },
                     onDenied = { m.fail("Camera access is off. Allow it in the app settings to take a reading.") },
                 )
             }
@@ -168,11 +168,11 @@ fun CalibrateDialog(startSystolic: Int, startDiastolic: Int, onDismiss: () -> Un
             Row(Modifier.fillMaxWidth().panel(14).padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("SYSTOLIC", color = p.readoutSecondary, style = Fonts.rajdhani(12.sp, true), letterSpacing = 1.5.sp)
-                    MenuPicker("$sys", (70..250).map { "$it" to it }, { sys = it })
+                    NumberWheel((70..250).toList(), sys) { sys = it }
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("DIASTOLIC", color = p.readoutSecondary, style = Fonts.rajdhani(12.sp, true), letterSpacing = 1.5.sp)
-                    MenuPicker("$dia", (40..150).map { "$it" to it }, { dia = it })
+                    NumberWheel((40..150).toList(), dia) { dia = it }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {

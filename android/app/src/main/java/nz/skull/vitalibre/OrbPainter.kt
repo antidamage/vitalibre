@@ -223,21 +223,26 @@ fun DrawScope.drawTrace(f: OrbFrame, p: Palette, trace: DoubleArray, end: Double
     }
     val boost = 1 + 0.9f * pulse
     val crest = if (p.isLight) Color(0xFF1FD6B8) else Color(0xFFFF2B2B)
-    // Glow: a few widening, fainter strokes stand in for a blur.
-    for ((w, a) in listOf(7f to 0.18f, 4.5f to 0.30f)) {
-        for (s in segs) drawPath(s.path, s.colour.copy(alpha = min(1f, a * s.alpha * boost)), style = Stroke(w * density * (1 + 0.6f * pulse), cap = StrokeCap.Round), blendMode = BlendMode.Plus)
-    }
-    for (s in segs) {
-        drawPath(s.path, s.colour.mixed(crest, 0.6f * pulse).copy(alpha = min(1f, s.alpha * (0.85f + 0.15f * pulse))),
-            style = Stroke((1.4f + 0.8f * pulse) * density, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    }
-    // A lit crest on each local maximum, at least 0.35 s apart.
-    var lastCrest = -1000
-    val gap = (0.35 * rate).toInt()
-    for (k in 2 until trace.size - 2) {
-        if (trace[k] > 0.5 && trace[k] >= trace[k - 1] && trace[k] > trace[k + 1] && k - lastCrest > gap) {
-            lastCrest = k
-            drawCircle(crest.copy(alpha = 0.95f), radius = (2.4f + 1.2f * pulse) * density, center = pt(k))
+    // A hairline with only a suggestion of glow: two narrow additive strokes, not a wide blur, so the red
+    // reads as a line rather than a fat smeared band. Butt caps because the segments are contiguous —
+    // round caps bead where one meets the next. The whole trace, glow included, is clipped to the ring
+    // band so it can never spill past the graph it belongs to.
+    clipPath(annulus(f, OrbGeometry.ringInner, OrbGeometry.ringOuter)) {
+        for ((w, a) in listOf(2.6f to 0.10f, 1.8f to 0.16f)) {
+            for (s in segs) drawPath(s.path, s.colour.copy(alpha = min(1f, a * s.alpha * boost)), style = Stroke(w * density * (1 + 0.35f * pulse), cap = StrokeCap.Butt, join = StrokeJoin.Round), blendMode = BlendMode.Plus)
+        }
+        for (s in segs) {
+            drawPath(s.path, s.colour.mixed(crest, 0.6f * pulse).copy(alpha = min(1f, s.alpha * (0.85f + 0.15f * pulse))),
+                style = Stroke(1.0f * density, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+        }
+        // A lit crest on each local maximum, at least 0.35 s apart.
+        var lastCrest = -1000
+        val gap = (0.35 * rate).toInt()
+        for (k in 2 until trace.size - 2) {
+            if (trace[k] > 0.5 && trace[k] >= trace[k - 1] && trace[k] > trace[k + 1] && k - lastCrest > gap) {
+                lastCrest = k
+                drawCircle(crest.copy(alpha = 0.95f), radius = (1.6f + 0.6f * pulse) * density, center = pt(k))
+            }
         }
     }
 }

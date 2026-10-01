@@ -11,42 +11,27 @@ struct AboutView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle(text: Publisher.store.displayName)
-                    row("Version", version)
-                    row("Model", measurer.modelVersion)
-                    row("Licence", "GPL-3.0-or-later")
+            VStack(alignment: .leading, spacing: 20) {
+                SectionPanel(title: Publisher.store.displayName, symbol: "info.circle") {
+                    DataRow(title: "Version", value: version)
+                    DataRow(title: "Model", value: measurer.modelVersion)
+                    DataRow(title: "Licence", value: "GPL-3.0-or-later")
                 }
-                .padding(16).panel()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle(text: "Regulatory")
-                    BodyText(text: Publisher.policy.regulatory)
-                }
-                .padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle(text: "Third-party notices")
-                    BodyText(text: "Chakra Petch, © 2018 The Chakra Petch Project Authors, SIL Open Font License 1.1.")
-                    BodyText(text: "Rajdhani, by Indian Type Foundry, SIL Open Font License 1.1.")
-                    BodyText(text: "The beat detector reimplements the published algorithm of Elgendi et al. (PLoS ONE 2013). The blood pressure approach follows the survey by Frey, Menon and Elgendi (npj Digital Medicine 2022, CC BY 4.0). No code or figures are copied from either.")
-                    BodyText(text: "The dial click is from the owner's own dashboard sound set.")
+                SectionPanel(title: "Regulatory", symbol: "cross.case") { text(Publisher.policy.regulatory) }
+                SectionPanel(title: "Third-party notices", symbol: "doc.text") {
+                    text("Chakra Petch, © 2018 The Chakra Petch Project Authors, SIL Open Font License 1.1.")
+                    text("Rajdhani, by Indian Type Foundry, SIL Open Font License 1.1.")
+                    text("The beat detector reimplements the published algorithm of Elgendi et al. (PLoS ONE 2013). The blood pressure approach follows the survey by Frey, Menon and Elgendi (npj Digital Medicine 2022, CC BY 4.0). No code or figures are copied from either.")
+                    text("The dial click is from the owner's own dashboard sound set.")
                     if !Publisher.store.sourceURL.isEmpty, let url = URL(string: Publisher.store.sourceURL) {
-                        Link("Source code", destination: url).font(.rajdhani(16, semibold: true)).foregroundStyle(palette.led)
+                        Link("Source code ↗", destination: url).font(.rajdhani(17)).tint(palette.led)
                     }
                 }
-                .padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()
-            }
-            .padding(.horizontal, 16).padding(.vertical, 10)
+            }.padding(.horizontal, 22).padding(.vertical, 12).padding(.bottom, 18).frame(maxWidth: 640).frame(maxWidth: .infinity)
         }
     }
 
-    private func row(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).font(.rajdhani(15)).foregroundStyle(palette.readoutSecondary)
-            Spacer()
-            Text(value).font(.chakra(13, .medium)).foregroundStyle(palette.readout)
-        }
+    private func text(_ s: String) -> some View {
+        Text(s).font(.rajdhani(17)).foregroundStyle(palette.readoutSecondary)
     }
 }

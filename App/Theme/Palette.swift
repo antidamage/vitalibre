@@ -74,7 +74,7 @@ struct Palette {
         highlight: Color(hex: 0xC4C4C4), clock: Color(hex: 0xA1A1A1), led: Color(hex: 0x129C8E),
         plate: Color(hex: 0xFFFFFF), alert: Color(hex: 0x93FFF9), spark: Color(hex: 0x129C8E),
         ringStops: lightInk, ringInk: lightInk, trace: Color(hex: 0xFF7D5E),
-        lightFace: true, readout: Color(hex: 0x4A4A4A), readoutSecondary: Color(hex: 0x8A8A8A))
+        lightFace: true, readout: Color(hex: 0x4A4A4A), readoutSecondary: Color(hex: 0x626262))
 
     /// Top-lit background: a very slight lift at the top, then the flat colour.
     var backgroundGradient: LinearGradient {

@@ -29,9 +29,39 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private var t0: CMTime?
     private var locked = false
     private var coverStart: Double?
+    /// When the lock was last released, so the light is given a second to settle before it is re-taken.
+    private var unlockedAt = -10.0
     private var lastCoveredT = -10.0
     private var wantTorch = false
     private var lastTorchCheck = -10.0
+    /// The flash decision, from the samples alone. See FlashPolicy.
+    private var policy = FlashPolicy()
+    /// The flash state the last reading settled on; a scan starts from it. Set by the Measurer before start.
+    var remembered: Bool?
+    /// True/false once the flash usage is settled, nil while it is still being decided. Written on the camera
+    /// queue while a frame is handled and read from the main queue, so access is guarded here (Android marks the
+    /// same two fields `@Volatile`).
+    private let stateLock = NSLock()
+    private var stateFlashUsed: Bool?
+    private var stateDecisionPending = false
+
+    var flashUsed: Bool? {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return stateFlashUsed
+    }
+
+    /// The flash decision is still running, so the reading in hand is not final.
+    var decisionPending: Bool {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return stateDecisionPending
+    }
+
+    private func publish(_ flash: Bool?, _ pending: Bool) {
+        stateLock.lock()
+        stateFlashUsed = flash
+        stateDecisionPending = pending
+        stateLock.unlock()
+    }
 
     static func authorise() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -46,10 +76,14 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             queue.async {
                 do {
                     try self.configureIfNeeded()
-                    self.t0 = nil; self.lastTorchCheck = -10; self.locked = false; self.coverStart = nil; self.lastCoveredT = -10
+                    self.t0 = nil; self.lastTorchCheck = -10; self.locked = false; self.coverStart = nil; self.lastCoveredT = -10; self.unlockedAt = -10
                     self.session.startRunning()
-                    self.wantTorch = true
-                    try self.setTorch(on: true)
+                    // With no memory the flash starts off and is switched on only if the signal turns out too
+                    // flat (see FlashPolicy). A remembered state is used straight away and not re-tested.
+                    self.policy.start(remembered: self.remembered)
+                    self.wantTorch = self.policy.torchWanted
+                    self.publish(self.policy.flashUsed, self.policy.decisionPending)
+                    try self.setTorch(on: self.wantTorch)
                     cont.resume()
                 } catch { cont.resume(throwing: error) }
             }
@@ -61,6 +95,8 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         queue.async {
             self.wantTorch = false
             try? self.setTorch(on: false)
+            self.policy.stop()
+            self.publish(nil, false)
             self.setLock(false)
             if self.session.isRunning { self.session.stopRunning() }
         }
@@ -127,11 +163,26 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         if s.covered {
             lastCoveredT = s.t
             if coverStart == nil { coverStart = s.t }
-            if !locked, let c = coverStart, s.t - c > 1.0 { setLock(true) }
+            if !locked, let c = coverStart, s.t - c > 1.0, s.t - unlockedAt > 1.0 { setLock(true) }
         } else if s.t - lastCoveredT > 0.5 {
             coverStart = nil
             if locked { setLock(false) }
+            unlockedAt = s.t
         }
+    }
+
+    /// Applies the flash policy's decision for this sample.
+    private func apply(_ action: FlashPolicy.Action, at t: Double) {
+        if case .setTorch(let on) = action {
+            wantTorch = on
+            try? setTorch(on: on)
+            // The lighting is changing, so the exposure lock is released and the light given a second to settle
+            // before exposure, white balance and focus are frozen again: a trial measured through the flash-off
+            // scene's settings would say nothing about the trial.
+            setLock(false)
+            unlockedAt = t
+        }
+        publish(policy.flashUsed, policy.decisionPending)
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -154,7 +205,8 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             for x in Swift.stride(from: x0, to: x0 + side, by: 2) {
                 let p = row + x * 4
                 sumB += Int(p[0]); sumG += Int(p[1]); sumR += Int(p[2])
-                if p[2] >= 250 { hot += 1 }
+                // The green channel carries the pulse; red clips on nearly every pixel of a covered fingertip.
+                if p[1] >= 250 { hot += 1 }
                 n += 1
             }
         }
@@ -162,6 +214,7 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         let s = PPGSample(t: t, r: Double(sumR) / Double(n), g: Double(sumG) / Double(n),
                           b: Double(sumB) / Double(n), saturated: Double(hot) / Double(n))
         manageLock(s)
+        apply(policy.regulate(s), at: t)
         DispatchQueue.main.async { [weak self] in self?.onSample?(s) }
     }
 }

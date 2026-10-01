@@ -29,6 +29,13 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(try? JSONEncoder().encode(calibration), forKey: "bpCalibration") }
     }
     @Published var simulatedPulse: Bool { didSet { defaults.set(simulatedPulse, forKey: "simulatedPulse") } }
+    /// The flash state the last reading settled on; a scan starts from it. nil = not known yet.
+    @Published var workingFlash: Bool? {
+        didSet {
+            if let workingFlash { defaults.set(workingFlash, forKey: "workingFlash") }
+            else { defaults.removeObject(forKey: "workingFlash") }
+        }
+    }
 
     init() {
         themeMode = ThemeMode(rawValue: defaults.string(forKey: "themeMode") ?? "") ?? .dark
@@ -44,5 +51,6 @@ final class Preferences: ObservableObject {
         usualConfirmed = defaults.object(forKey: "usualConfirmed") as? Bool ?? (storedSystolic > 0 && storedDiastolic > 0)
         calibration = (defaults.data(forKey: "bpCalibration").flatMap { try? JSONDecoder().decode(BPCalibration.self, from: $0) }) ?? BPCalibration()
         simulatedPulse = defaults.object(forKey: "simulatedPulse") as? Bool ?? true
+        workingFlash = defaults.object(forKey: "workingFlash") as? Bool
     }
 }

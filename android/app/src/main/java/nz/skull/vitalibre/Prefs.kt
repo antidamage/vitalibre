@@ -47,6 +47,9 @@ class Prefs(context: Context) {
         private set
     var calibration by mutableStateOf(readCalibration())
         private set
+    /** The flash state of the last good reading on this device: true = on, false = off, null = not known yet. */
+    var workingFlash: Boolean? = sp.getInt("workingFlash", -1).let { if (it < 0) null else it == 1 }
+        private set
 
     val usual: UsualBP?
         get() {
@@ -59,6 +62,10 @@ class Prefs(context: Context) {
     fun changeSex(v: Sex) { sex = v; sp.edit().putString("sex", v.name).apply() }
     fun changeUsualSystolic(v: Int) { usualSystolic = v; sp.edit().putInt("usualSystolic", v).apply() }
     fun changeUsualDiastolic(v: Int) { usualDiastolic = v; sp.edit().putInt("usualDiastolic", v).apply() }
+    fun rememberFlash(on: Boolean?) {
+        workingFlash = on
+        sp.edit().putInt("workingFlash", when (on) { null -> -1; true -> 1; false -> 0 }).apply()
+    }
     fun confirmUsual() { usualConfirmed = true; sp.edit().putBoolean("usualConfirmed", true).apply() }
 
     /** Clears the cuff calibrations and the confirmed typical pressure; the pickers go back to 120/80. */

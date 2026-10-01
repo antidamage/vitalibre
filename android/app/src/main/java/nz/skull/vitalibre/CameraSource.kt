@@ -42,6 +42,8 @@ class CameraSource(private val context: Context) {
         const val MARGIN = 5.0           // the flash must be at least this much worse to be switched off again
         const val TRIAL_COMPARE_AT = 4.0 // seconds the flash is tried before deciding (the last 3 s are compared)
         const val NO_COVER_AFTER = 10.0  // seconds with no finger recognised before the flash is tried
+        const val DARK_SCENE = 12.0      // mean channel value below this with the flash off: nothing is lit at all
+        const val DARK_HOLD = 1.0        // seconds of that darkness before the flash is switched on
     }
 
     /** The live image, hosted by the orb's dome. Created once so the preview surface survives screen changes. */
@@ -83,10 +85,18 @@ class CameraSource(private val context: Context) {
     private var startedAt = -1.0
     private var coverSince = -1.0
     private var trialAt = -1.0
+    private var darkSince = -1.0
     private var qualityOff = 0.0
     private val times = ArrayList<Double>()     // recent frame times and green means while covered
     private val greens = ArrayList<Double>()
     private var quality = 0.0
+
+    /** The flash state that worked on this device last time. Set before start(); null means discover it. */
+    @Volatile var remembered: Boolean? = null
+
+    /** The flash state this scan settled on: true on, false off, null while the flash trial is undecided. */
+    val flashUsed: Boolean?
+        get() = when (light) { Light.ON_KEPT -> true; Light.OFF, Light.OFF_KEPT -> false; Light.ON_TRIAL -> null }
 
     /** True while the flash trial is running, so the scan does not finish before the decision. */
     @Volatile var decisionPending = false
@@ -112,12 +122,17 @@ class CameraSource(private val context: Context) {
                 analysis.setAnalyzer(executor, ::analyze)
                 p.unbindAll()
                 t0 = -1L; locked = false; coverStart = -1.0; lastCovered = -10.0; lastTorchCheck = -10.0
-                evIndex = 0; lastEv = -10.0; stableSince = -1.0; light = Light.OFF; startedAt = -1.0; coverSince = -1.0; trialAt = -1.0; qualityOff = 0.0; times.clear(); greens.clear(); quality = 0.0; lastQualityAt = -10.0; decisionPending = false
+                evIndex = 0; lastEv = -10.0; stableSince = -1.0; light = Light.OFF; startedAt = -1.0; coverSince = -1.0; trialAt = -1.0; qualityOff = 0.0; times.clear(); greens.clear(); quality = 0.0; lastQualityAt = -10.0; decisionPending = false; darkSince = -1.0
                 val cam = p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
                 camera = cam
-                // The flash starts OFF; it is switched on only if the signal turns out too flat (see regulateLight).
-                wantTorch = false
-                cam.cameraControl.enableTorch(false)
+                // With no memory the flash starts OFF and is switched on only if the signal turns out too flat (see
+                // regulateLight). A remembered state is used straight away and not re-tested.
+                when (remembered) {
+                    true -> { light = Light.ON_KEPT; wantTorch = true }
+                    false -> { light = Light.OFF_KEPT; wantTorch = false }
+                    null -> wantTorch = false
+                }
+                cam.cameraControl.enableTorch(wantTorch)
                 cam.cameraControl.setExposureCompensationIndex(0)
                 done(Result.success(Unit))
             } catch (e: Exception) {
@@ -184,6 +199,16 @@ class CameraSource(private val context: Context) {
             coverSince = -1.0
             times.clear(); greens.clear()
         }
+        // A scene with nothing lit has nothing to read: while the flash is off, a second of near-black means
+        // the flash is needed now rather than after the settle window.
+        if (light == Light.OFF || light == Light.OFF_KEPT) {
+            if ((s.r + s.g + s.b) / 3 < DARK_SCENE) {
+                if (darkSince < 0) darkSince = s.t
+            } else {
+                darkSince = -1.0
+            }
+        }
+        val darkScene = darkSince >= 0 && s.t - darkSince >= DARK_HOLD
         // Flash off gets OFF_SETTLE seconds of cover to settle before it is judged. Once the flash is on the
         // person has settled already, so it is compared after a short TRIAL_COMPARE_AT trial.
         val settled = times.size >= MIN_SAMPLES && when (light) {
@@ -193,12 +218,16 @@ class CameraSource(private val context: Context) {
         }
         if (settled && s.t - lastQualityAt >= 0.5) { quality = pulseQuality(); lastQualityAt = s.t }
         when (light) {
-            Light.OFF -> {
-                val neverCovered = s.t - startedAt > NO_COVER_AFTER && (lastCovered < 0 || s.t - lastCovered > NO_COVER_AFTER)
-                if (neverCovered || (settled && quality < WEAK)) {
+            Light.OFF, Light.OFF_KEPT -> {
+                // A remembered "flash off" is left alone unless the scene is dark enough that there is nothing
+                // to see at all; the no-finger and flat-signal rules apply to a flash that was not remembered.
+                val off = light == Light.OFF
+                val neverCovered = off && s.t - startedAt > NO_COVER_AFTER && (lastCovered < 0 || s.t - lastCovered > NO_COVER_AFTER)
+                val flat = off && settled && quality < WEAK
+                if (neverCovered || flat || darkScene) {
                     qualityOff = if (settled) quality else 0.0
                     light = Light.ON_TRIAL; trialAt = s.t; wantTorch = true; stableSince = -1.0; coverSince = -1.0; decisionPending = true
-                    times.clear(); greens.clear()
+                    times.clear(); greens.clear(); darkSince = -1.0
                     main.post { cam.cameraControl.enableTorch(true); setLock(false) }
                 }
             }

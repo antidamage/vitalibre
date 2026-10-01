@@ -264,6 +264,50 @@ These supersede anything above that disagrees.
 - **First load**: a three-step intro (big text, big confirm button, disclaimer at the bottom); the disclaimer no longer sits on the Measure screen. Typical resting blood pressure is set under Calibration. The image share is a cropped screen capture of the orb.
 - **Licence**: GPL-3.0-or-later (`LICENSE`), shown in About. The Hermes plan chose the same licence.
 
+## Revisions, 2026-10-02 (waveform line, flash memory)
+
+- **Waveform line**: one stroke at 1 pt on iOS and 1 dp on Android - the same hairline on a phone, though a
+  point is 2-3 device pixels and not one - with butt caps and round joins, over two narrow
+  additive strokes that stand in for a glow (2.6 pt at 10%, 1.8 pt at 16%). The earlier 7 pt/4.5 pt
+  pair at 18%/30% read as a fat pixellated band rather than a line. The same numbers on both platforms
+  (`OrbPainter+Live.swift`; `OrbPainter.kt`, scaled by density).  
+  The crest dots moved out of the additive layer with it and shrank to `1.6 + 0.6 * pulse` pt, matching
+  Android; they were drawn additively at `2.4 + 1.2 * pulse` before.
+- **No curve fitting**: the trace is straight segments between samples, three samples per segment, with
+  the wrap back to the start of the circle skipped. Nothing is smoothed or overshot, so what is on
+  screen is the data that arrived.
+- **Clipped to the graph**: the trace layer, glow strokes included, is clipped to the ring band
+  (`OrbGeometry.ringInner`..`ringOuter`) on both platforms, so a sample at the end of the range cannot
+  draw outside the graph.
+- **Trace colours are the same on both platforms**: one height ramp per mode — dark `#4A0709`,
+  `#9E0F16`, `#E11D25`, `#FF5A4F`; light `#06262B`, `#0B5F63`, `#129C8E`, `#4FE3C1` — with the crest
+  flash `#FF2B2B` (dark) or `#1FD6B8` (light) added to the segment colour. The core stroke is painted
+  with ordinary blending so the red stays ruby; the orange cast came from the wide additive glow, which
+  is gone.
+- **Flash memory** (both platforms): a reading starts in the flash state the last reading with a result
+  settled on (`Preferences.workingFlash`, `Prefs.workingFlash`; nil = not known). With no memory the
+  flash starts off. The policy is one implementation per platform with the same constants
+  (`FlashPolicy.swift`; `CameraSource.regulateLight`):
+  - the flash is offered when 10 s of cover with the flash off still gives a weak pulse
+    (quality < 20), or when no finger has been recognised for 10 s;
+  - it is tried for 4 s and kept unless the flash-off figure was at least 5 better; a flash that fails
+    that comparison is switched off again and that preference is remembered;
+  - a scene whose mean channel value stays under 12 for a full second switches the flash on at once,
+    including against a remembered "off": a scene with nothing lit has nothing to read;
+  - a reading that ends in a result records the state it used; one that fails clears the memory, and so
+    does a camera reading that ends before the policy settled: a state the reading did not prove is never
+    kept. While a reading runs the torch is still re-applied twice a second;
+  - the reading is finalised as soon as the decision lands, and at the scan's own 45 s maximum either way,
+    so a trial that can never settle cannot hold a reading open;
+  - "no finger for 10 s" is measured from the last *covered* sample, so a finger that is on the lens never
+    trips it;
+  - the exposure, white-balance and focus lock is released when the torch switches and re-taken only after
+    a second of stable light, so the 4 s trial is compared on its own exposure, not the flash-off scene's.
+- **Saturation is counted on the green channel, on both platforms**: the `saturated` fraction that `covered`
+  and "press more lightly" use counts green pixels at full scale. iOS counted red, which clips on nearly
+  every pixel of a correctly covered fingertip under the torch, so a good finger could read as uncovered.
+  `Core/ScanSession.swift` and `android/core`'s `ScanSession.kt` both say green now.
+
 ## Android build (branch `android`)
 
 Native Kotlin, Jetpack Compose and CameraX under `android/`; same design, theme, copy and numbers as the iOS build.

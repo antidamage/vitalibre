@@ -67,7 +67,7 @@ class Palette(
             highlight = Color(0xFFC4C4C4), clock = Color(0xFFA1A1A1), led = Color(0xFF129C8E),
             plate = Color(0xFFFFFFFF), alert = Color(0xFF93FFF9), spark = Color(0xFF129C8E),
             ringStops = lightInk, ringInk = lightInk, lightFace = true,
-            readout = Color(0xFF4A4A4A), readoutSecondary = Color(0xFF8A8A8A),
+            readout = Color(0xFF4A4A4A), readoutSecondary = Color(0xFF626262),
         )
     }
 }
@@ -75,3 +75,10 @@ class Palette(
 val LocalPalette = staticCompositionLocalOf { Palette.dark }
 
 enum class ThemeMode(val label: String) { AUTO("Auto"), LIGHT("Light"), DARK("Dark") }
+
+// The instrument surfaces of the Codex build, in this palette.
+val Palette.soft: Color get() = if (isLight) Color(0xFFF2F2F2) else Color(0xFF1F1F1F)
+val Palette.line: Color get() = if (isLight) Color(0xFFCCCCCC) else Color(0xFF3B3532)
+val Palette.edge: Brush
+    get() = Brush.linearGradient(listOf(Color.White.copy(alpha = if (isLight) 0.95f else 0.16f), Color.Black.copy(alpha = if (isLight) 0.08f else 0.8f)))
+val Palette.surface: Brush get() = Brush.linearGradient(listOf(soft, panel))

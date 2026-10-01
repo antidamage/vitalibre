@@ -20,10 +20,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,18 +90,7 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 @Composable
 fun BodyText(text: String, modifier: Modifier = Modifier) {
     val p = LocalPalette.current
-    Text(text, modifier.fillMaxWidth(), color = p.readout.copy(alpha = 0.92f), style = Fonts.rajdhani(16.sp), lineHeight = 21.sp)
-}
-
-/** A vertical groove cut into the bar: a dark line with a light line beside it, fading at the ends. */
-@Composable
-fun SunkenDivider() {
-    val p = LocalPalette.current
-    Canvas(Modifier.width(2.dp).height(40.dp)) {
-        val fade = listOf(Color.Transparent, Color.Black, Color.Black, Color.Transparent)
-        drawLine(Brush.verticalGradient(fade.map { it.copy(alpha = if (p.isLight) 0.28f * it.alpha else 0.85f * it.alpha) }), Offset(0.5.dp.toPx(), 0f), Offset(0.5.dp.toPx(), size.height), 1.dp.toPx())
-        drawLine(Brush.verticalGradient(fade.map { Color.White.copy(alpha = (if (p.isLight) 0.95f else 0.14f) * it.alpha) }), Offset(1.5.dp.toPx(), 0f), Offset(1.5.dp.toPx(), size.height), 1.dp.toPx())
-    }
+    Text(text, modifier.fillMaxWidth(), color = p.readoutSecondary, style = Fonts.rajdhani(17.sp), lineHeight = 22.sp)
 }
 
 enum class BarIcon { PULSE, LIST, HELP, INFO, HEART }
@@ -139,54 +135,31 @@ private fun BarGlyph(icon: BarIcon, color: Color) {
     }
 }
 
-/** One label in the bottom bar: no plate of its own, the bar is the surface. */
-@Composable
-private fun ConsoleButton(title: String, icon: BarIcon, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val p = LocalPalette.current
-    val color = if (active) p.led else p.clock
-    Column(
-        modifier.pressable(onClick).height(58.dp),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
-    ) {
-        Box(Modifier.drawBehind {
-            if (active) drawCircle(p.led.copy(alpha = 0.25f), radius = 16.dp.toPx())
-        }) { BarGlyph(icon, color) }
-        Text(title.uppercase(), color = color, style = Fonts.chakra(10.sp, Fonts.Face.MEDIUM), letterSpacing = 1.2.sp, maxLines = 1,
-            modifier = Modifier.padding(top = 4.dp))
-    }
-}
-
 class BarItem<T>(val tab: T, val title: String, val icon: BarIcon)
 
-/**
- * A single bar across the whole width, square at the sides and bottom. Its top edge is a rounded bullnose,
- * shown by lighting: a lit crest, then falling away into shade. Buttons are divided by sunken grooves.
- */
+/** The bottom navigation: console buttons with a glyph, a label and an indicator that lights for the current tab. */
 @Composable
 fun <T> ConsoleBar(items: List<BarItem<T>>, selection: T, onSelect: (T) -> Unit) {
     val p = LocalPalette.current
-    val base = p.background.mixed(Color.Black, if (p.isLight) 0.04f else 0.28f)
     Row(
         Modifier
             .fillMaxWidth()
-            .drawBehind {
-                // Shadow cast upward onto the content.
-                drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = if (p.isLight) 0.18f else 0.6f)), startY = -14.dp.toPx(), endY = 0f), topLeft = Offset(0f, -14.dp.toPx()), size = androidx.compose.ui.geometry.Size(size.width, 14.dp.toPx()))
-            }
-            .background(Brush.verticalGradient(listOf(base.mixed(Color.White, if (p.isLight) 0.5f else 0.07f), base, base.mixed(Color.Black, if (p.isLight) 0.05f else 0.3f))))
-            .drawBehind {
-                // The rounded top: a bright crest line, then a soft band curving away.
-                drawLine(Color.White.copy(alpha = if (p.isLight) 1f else 0.22f), Offset(0f, 0.5f), Offset(size.width, 0.5f), 1.dp.toPx())
-                drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (p.isLight) 0.6f else 0.10f), Color.Transparent), endY = 14.dp.toPx()),
-                    topLeft = Offset(0f, 1.dp.toPx()), size = androidx.compose.ui.geometry.Size(size.width, 14.dp.toPx()))
-            }
+            .background(p.surface)
+            .drawBehind { drawLine(p.edge, Offset(0f, 0.5f), Offset(size.width, 0.5f), 1.dp.toPx()) }
             .navigationBarsPadding()
-            .padding(top = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        items.forEachIndexed { i, item ->
-            if (i > 0) SunkenDivider()
-            ConsoleButton(item.title, item.icon, item.tab == selection, Modifier.weight(1f)) { onSelect(item.tab) }
+        for (item in items) {
+            val on = item.tab == selection
+            Column(
+                Modifier.weight(1f).console(on).pressable({ onSelect(item.tab) }).padding(vertical = 9.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                BarGlyph(item.icon, if (on) p.readout else p.readoutSecondary)
+                Text(item.title, color = if (on) p.readout else p.readoutSecondary, style = Fonts.chakra(10.sp, Fonts.Face.MEDIUM), maxLines = 1)
+                Box(Modifier.size(13.dp, 2.dp).background(if (on) p.led else p.line, CircleShape))
+            }
         }
     }
 }
@@ -212,25 +185,109 @@ fun RingButton(title: String, modifier: Modifier = Modifier, big: Boolean = fals
     }
 }
 
-/** A drop-down menu in place of a native spinner, themed. */
-@Composable
-fun <T> MenuPicker(label: String, items: List<Pair<String, T>>, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+/** A raised console key: surface, soft shadow, lit edge, and an led outline when selected. */
+fun Modifier.console(selected: Boolean = false, radius: Int = 9): Modifier = composed {
     val p = LocalPalette.current
-    var open by remember { mutableStateOf(false) }
-    Box(modifier) {
-        Text(
-            "$label  ▾", color = p.led, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM),
-            modifier = Modifier.clickable { open = true }.padding(horizontal = 6.dp, vertical = 8.dp),
-        )
-        DropdownMenu(open, { open = false }, containerColor = p.panel) {
-            for ((text, value) in items) {
-                DropdownMenuItem(
-                    text = { Text(text, color = p.readout, style = Fonts.chakra(14.sp, Fonts.Face.MEDIUM)) },
-                    onClick = { open = false; onSelect(value) },
-                )
+    val shape = RoundedCornerShape(radius.dp)
+    this
+        .shadow(3.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+        .background(p.surface, shape)
+        .border(1.dp, p.edge, shape)
+        .then(if (selected) Modifier.border(1.dp, p.led.copy(alpha = 0.55f), shape) else Modifier)
+}
+
+/** A rectangle with the top right corner cut. */
+class InstrumentShape(private val cut: Dp = 12.dp) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val c = with(density) { cut.toPx() }
+        return Outline.Generic(Path().apply {
+            moveTo(0f, 0f); lineTo(size.width - c, 0f); lineTo(size.width, c); lineTo(size.width, size.height); lineTo(0f, size.height); close()
+        })
+    }
+}
+
+/** A panel with a titled header, a rule, and the content. */
+@Composable
+fun SectionPanel(title: String, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val p = LocalPalette.current
+    val shape = InstrumentShape()
+    Column(
+        modifier.fillMaxWidth().background(p.surface, shape).border(1.dp, p.edge, shape).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title.uppercase(), color = p.readout, style = Fonts.chakra(12.sp, Fonts.Face.MEDIUM), letterSpacing = 2.sp, modifier = Modifier.weight(1f))
+            Box(Modifier.size(16.dp, 2.dp).background(p.led.copy(alpha = 0.7f), CircleShape))
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(p.line))
+        content()
+    }
+}
+
+@Composable
+fun ScreenHeading(title: String, subtitle: String) {
+    val p = LocalPalette.current
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(title, color = p.readout, style = Fonts.chakra(28.sp, Fonts.Face.REGULAR))
+        Text(subtitle, color = p.readoutSecondary, style = Fonts.rajdhani(17.sp))
+    }
+}
+
+@Composable
+fun DataRow(title: String, value: String) {
+    val p = LocalPalette.current
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(title, color = p.readoutSecondary, style = Fonts.rajdhani(17.sp))
+        Text(value, color = p.readout, style = Fonts.rajdhani(17.sp))
+    }
+}
+
+/** A row of console keys, one of them selected. */
+@Composable
+fun <T> ConsoleChoice(options: List<Pair<String, T>>, selected: T, onSelect: (T) -> Unit) {
+    val p = LocalPalette.current
+    Row(
+        Modifier.fillMaxWidth().background(p.background, RoundedCornerShape(12.dp)).padding(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        for ((label, value) in options) {
+            val on = value == selected
+            Column(
+                Modifier.weight(1f).console(on).pressable({ Sounds.play(Sounds.CLICK); onSelect(value) }).padding(vertical = 13.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                Text(label, color = if (on) p.readout else p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM), maxLines = 1)
+                Box(Modifier.size(14.dp, 2.dp).background(if (on) p.led else p.line, CircleShape))
             }
         }
     }
+}
+
+/** The platform's own number wheel, themed. `labels` replaces the digits (for a "Not set" entry). */
+@Composable
+fun NumberWheel(values: List<Int>, value: Int, modifier: Modifier = Modifier, labels: List<String> = values.map { it.toString() }, onChange: (Int) -> Unit) {
+    val p = LocalPalette.current
+    val latest by rememberUpdatedState(onChange)
+    val ink = p.readout.toArgb()
+    androidx.compose.ui.viewinterop.AndroidView(
+        modifier = modifier.width(110.dp).height(120.dp),
+        factory = { ctx ->
+            android.widget.NumberPicker(ctx).apply {
+                descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                wrapSelectorWheel = false
+                minValue = 0
+                maxValue = values.size - 1
+                displayedValues = labels.toTypedArray()
+                setOnValueChangedListener { _, _, new -> Sounds.play(Sounds.CLICK); latest(values[new]) }
+            }
+        },
+        update = { v ->
+            v.textColor = ink
+            v.textSize = 17f * v.resources.displayMetrics.scaledDensity
+            val i = values.indexOf(value).coerceAtLeast(0)
+            if (v.value != i) v.value = i
+        },
+    )
 }
 
 @Composable

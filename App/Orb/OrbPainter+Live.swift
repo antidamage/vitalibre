@@ -67,25 +67,33 @@ extension OrbPainter {
         }
         let boost = 1 + 0.9 * pulse
         let crest = p.isLight ? Color(hex: 0x1FD6B8) : Color(hex: 0xFF2B2B)
-        ctx.drawLayer { l in
-            l.blendMode = .plusLighter
-            l.drawLayer { g in
-                g.addFilter(.blur(radius: 2.5 + 3 * pulse))
-                for (path, colour, alpha) in segments {
-                    g.stroke(path, with: .color(colour.opacity(min(1, 0.5 * alpha * boost))),
-                             style: StrokeStyle(lineWidth: 3.5 + 2 * pulse, lineCap: .round))
+        // A hairline with only a suggestion of glow: two narrow additive strokes, not a wide blur, so the
+        // red reads as a line rather than a fat smeared band. Butt caps because the segments are
+        // contiguous — round caps bead where one meets the next. The whole trace, glow included, is
+        // clipped to the ring band so it can never spill past the graph it belongs to.
+        ctx.drawLayer { band in
+            band.clip(to: annulus(f, OrbGeometry.ringInner, OrbGeometry.ringOuter), style: evenOdd)
+            band.drawLayer { l in
+                l.blendMode = .plusLighter
+                for (width, alpha) in [(2.6, 0.10), (1.8, 0.16)] {
+                    for (path, colour, segAlpha) in segments {
+                        l.stroke(path, with: .color(colour.opacity(min(1, alpha * segAlpha * boost))),
+                                 style: StrokeStyle(lineWidth: width * (1 + 0.35 * pulse), lineCap: .butt, lineJoin: .round))
+                    }
                 }
             }
-            for (path, colour, alpha) in segments {
-                l.stroke(path, with: .color(colour.mixed(with: crest, 0.6 * pulse).opacity(min(1, alpha * (0.85 + 0.15 * pulse)))),
-                         style: StrokeStyle(lineWidth: 1.4 + 0.8 * pulse, lineCap: .round, lineJoin: .round))
-            }
-            // A lit crest on each local maximum, at least 0.35 s apart.
-            var lastCrest = -1000
-            let gap = Int(0.35 * rate)
-            for k in 2..<(trace.count - 2) where trace[k] > 0.5 && trace[k] >= trace[k - 1] && trace[k] > trace[k + 1] && k - lastCrest > gap {
-                lastCrest = k
-                l.fill(circle(pt(k), 2.4 + 1.2 * pulse), with: .color(crest.opacity(0.95)))
+            band.drawLayer { l in
+                for (path, colour, alpha) in segments {
+                    l.stroke(path, with: .color(colour.mixed(with: crest, 0.6 * pulse).opacity(min(1, alpha * (0.85 + 0.15 * pulse)))),
+                             style: StrokeStyle(lineWidth: 1.0, lineCap: .butt, lineJoin: .round))
+                }
+                // A lit crest on each local maximum, at least 0.35 s apart.
+                var lastCrest = -1000
+                let gap = Int(0.35 * rate)
+                for k in 2..<(trace.count - 2) where trace[k] > 0.5 && trace[k] >= trace[k - 1] && trace[k] > trace[k + 1] && k - lastCrest > gap {
+                    lastCrest = k
+                    l.fill(circle(pt(k), 1.6 + 0.6 * pulse), with: .color(crest.opacity(0.95)))
+                }
             }
         }
     }

@@ -33,6 +33,8 @@ class Measurer(context: Context) {
     }
 
     val camera = CameraSource(context)
+    /** Told the flash state after a good reading, or null after a failed one so it is worked out again. */
+    private var flashLearned: (Boolean?) -> Unit = {}
     private val engine = ScanEngine({ handle(it) }, { camera.decisionPending })
     private var simulated: SimulatedSource? = null
 
@@ -65,8 +67,11 @@ class Measurer(context: Context) {
 
     val isBusy get() = phase is Phase.Starting || phase is Phase.Scanning || phase is Phase.Analysing
 
-    fun start(owner: LifecycleOwner, palette: Palette, age: Int?, sex: Sex, usual: UsualBP?, calibration: BPCalibration, simulate: Boolean = false) {
+    fun start(owner: LifecycleOwner, palette: Palette, age: Int?, sex: Sex, usual: UsualBP?, calibration: BPCalibration, simulate: Boolean = false,
+              rememberedFlash: Boolean? = null, onFlashLearned: (Boolean?) -> Unit = {}) {
         if (isBusy) return
+        flashLearned = onFlashLearned
+        camera.remembered = rememberedFlash
         progress = 0.0; liveHeartRate = null; liveBP = null; lastBeat = null; traceImage = null; keptImage = null
         guidance = Guidance.COVER_LENS
         sweepOriginMs = SystemClock.uptimeMillis().toDouble()
@@ -129,13 +134,20 @@ class Measurer(context: Context) {
             }
             is EngineEvent.Finished -> {
                 if (phase !is Phase.Scanning) return
+                val flash = camera.flashUsed
                 stopSources()
                 when (val o = e.outcome) {
                     is ScanOutcome.Success -> {
                         progress = 1.0; keptImage = e.keptImage; traceImage = null
+                        // A camera reading either settled the flash state or ended before it could; an unsettled
+                        // state is cleared rather than kept, so nothing is remembered that this reading did not prove.
+                        if (!isSimulated) flashLearned(flash)
                         phase = Phase.Result(o.result)
                     }
-                    is ScanOutcome.Failure -> phase = Phase.Failed(o.failure.message)
+                    is ScanOutcome.Failure -> {
+                        if (!isSimulated) flashLearned(null)
+                        phase = Phase.Failed(o.failure.message)
+                    }
                 }
             }
         }

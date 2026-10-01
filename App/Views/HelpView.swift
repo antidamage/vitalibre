@@ -16,54 +16,59 @@ struct HelpView: View {
         .init(title: "ISO 81060-2:2018 blood pressure device validation", url: "https://www.iso.org/standard/73339.html"),
     ]
 
+    private var seconds: Int { Int(ScanSession.targetSeconds) }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                card("How it works", [
-                    "Each time your heart beats, a little more blood fills the fingertip. Blood absorbs green light, so the fingertip lets through very slightly less green on every beat.",
-                    "With your finger over the rear camera and the flash on, the app averages the green channel of a square in the middle of every frame. That gives one number per frame. The pulse is only about 1% of that number, so most of the work is recovering it.",
-                    "The signal is resampled to an even rate and band-passed between 0.5 and 5 Hz forwards and backwards, which removes slow drift and fast noise without shifting the beats in time.",
-                    "Beats are found with a two-moving-average detector (Elgendi 2013). Intervals that are physically implausible, or far from their neighbours, are thrown away. Heart rate is the median of what is left.",
-                ])
-                card("The quality gate", [
-                    "Each scan is scored on the shape of the pulse (skewness), on how closely every beat matches the average beat, and on the strength of the pulse compared with the light level. If the score is too low, the app reports an error instead of a value.",
-                ])
-                card("Blood pressure", [
-                    "The blood pressure figure is an estimate derived from pulse-shape features. Before calibration it is shown as a range; after calibration, as a single figure for each component. A camera cannot measure blood pressure on its own. Without calibration, version 1 starts from typical values for your age and sex and adjusts them by a small, capped amount. It has not been clinically validated.",
-                    "For reference, published calibration-free camera methods have a typical error of about 13–16 mmHg systolic and 7–9 mmHg diastolic. That is two to three times worse than the ISO 81060-2 criterion (mean difference within 5 mmHg, standard deviation within 8 mmHg). Finger-camera heart rate is typically within about 2 beats per minute of an ECG at rest.",
-                    "Do not use these results to make medical decisions. For an accurate blood pressure reading, use a clinically validated blood pressure monitor.",
-                ])
-                card(Publisher.policy.calibrationHowTitle, Publisher.policy.calibrationHow.components(separatedBy: "\n\n"))
-                card("Getting a good reading", [
-                    "Sit still for a few minutes first. Rest your fingertip lightly over the lens and flash together, with no pressure. Keep the hand at heart height and don't talk.",
-                    "Cold hands, pressing hard, movement, bright sunlight, dark skin tones and some devices all reduce accuracy. Optical pulse sensing is less reliable on darker skin, and blood pressure error is larger at high and low pressures and in older people.",
-                ])
-                card(Publisher.policy.freeForeverTitle, [Publisher.policy.freeForever])
-                card(Publisher.policy.nothingSentTitle, [Publisher.policy.nothingSent])
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle(text: "Further reading and sources")
-                    ForEach(sources) { s in
-                        Link(destination: URL(string: s.url)!) {
-                            HStack(alignment: .top) {
-                                Text(s.title).font(.rajdhani(15, semibold: true)).foregroundStyle(palette.led)
-                                    .multilineTextAlignment(.leading)
-                                Spacer(minLength: 6)
-                                Image(systemName: "arrow.up.right").font(.system(size: 12)).foregroundStyle(palette.led)
-                            }
-                        }
-                    }
+            VStack(alignment: .leading, spacing: 20) {
+                ScreenHeading(title: "A little guidance", subtitle: "A steady finger. A clearer signal.")
+                SectionPanel(title: "Taking a reading", symbol: "hand.point.up") {
+                    step("01", "Sit comfortably", "Rest your hand and allow a moment to settle.")
+                    step("02", "Cover the camera", "Use your fingertip, with light pressure. Keep the hand at heart height and don't talk.")
+                    step("03", "Tap the orb", "Hold still for \(seconds) seconds.")
                 }
-                .padding(16).panel()
-            }
-            .padding(.horizontal, 16).padding(.vertical, 10)
+                SectionPanel(title: "How it works", symbol: "waveform.path") {
+                    text("Each time your heart beats, a little more blood fills the fingertip. Blood absorbs green light, so the fingertip lets through very slightly less green on every beat.")
+                    text("With your finger over the rear camera, the app averages the green channel of a square in the middle of every frame. That gives one number per frame. The pulse is only about 1% of that number, so most of the work is recovering it.")
+                    text("The signal is resampled to an even rate and band-passed between 0.5 and 5 Hz forwards and backwards, which removes slow drift and fast noise without shifting the beats in time.")
+                    text("Beats are found with a two-moving-average detector (Elgendi 2013). Intervals that are physically implausible, or far from their neighbours, are thrown away. Heart rate is the median of what is left.")
+                }
+                SectionPanel(title: "The quality gate", symbol: "checkmark.seal") {
+                    text("Each scan is scored on the shape of the pulse (skewness), on how closely every beat matches the average beat, and on the strength of the pulse compared with the light level. If the score is too low, the app reports an error instead of a value.")
+                }
+                SectionPanel(title: "Blood pressure", symbol: "drop") {
+                    text("The blood pressure figure is an estimate derived from pulse-shape features. Before calibration it is shown as a range; after calibration, as a single figure for each component. A camera cannot measure blood pressure on its own. Without calibration, version 1 starts from typical values for your age and sex and adjusts them by a small, capped amount. It has not been clinically validated.")
+                    text("For reference, published calibration-free camera methods have a typical error of about 13–16 mmHg systolic and 7–9 mmHg diastolic. That is two to three times worse than the ISO 81060-2 criterion (mean difference within 5 mmHg, standard deviation within 8 mmHg). Finger-camera heart rate is typically within about 2 beats per minute of an ECG at rest.")
+                    text("Do not use these results to make medical decisions. For an accurate blood pressure reading, use a clinically validated blood pressure monitor.")
+                }
+                SectionPanel(title: Publisher.policy.calibrationHowTitle, symbol: "slider.horizontal.3") {
+                    ForEach(Publisher.policy.calibrationHow.components(separatedBy: "\n\n"), id: \.self) { text($0) }
+                }
+                SectionPanel(title: "Getting a good reading", symbol: "thermometer.medium") {
+                    text("Cold hands, pressing hard, movement, bright sunlight, dark skin tones and some devices all reduce accuracy. Optical pulse sensing is less reliable on darker skin, and blood pressure error is larger at high and low pressures and in older people.")
+                }
+                SectionPanel(title: "Further reading", symbol: "book.closed") {
+                    ForEach(sources) { s in
+                        Link(s.title + " ↗", destination: URL(string: s.url)!)
+                    }
+                }.font(.rajdhani(17)).tint(palette.led)
+                SectionPanel(title: Publisher.policy.freeForeverTitle, symbol: "heart") { text(Publisher.policy.freeForever) }
+                SectionPanel(title: Publisher.policy.nothingSentTitle, symbol: "lock.shield") { text(Publisher.policy.nothingSent) }
+            }.padding(.horizontal, 22).padding(.bottom, 30).frame(maxWidth: 640).frame(maxWidth: .infinity)
         }
     }
 
-    private func card(_ title: String, _ paragraphs: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: title)
-            ForEach(paragraphs.indices, id: \.self) { BodyText(text: paragraphs[$0]) }
+    private func text(_ s: String) -> some View {
+        Text(s).font(.rajdhani(17)).foregroundStyle(palette.readoutSecondary)
+    }
+
+    private func step(_ number: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            Text(number).font(.rajdhani(25)).foregroundStyle(palette.led)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.chakra(16)).foregroundStyle(palette.readout)
+                Text(detail).font(.rajdhani(16)).foregroundStyle(palette.readoutSecondary)
+            }
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()
     }
 }

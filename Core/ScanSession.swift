@@ -4,7 +4,8 @@ import Foundation
 struct PPGSample: Equatable {
     var t: Double
     var r: Double, g: Double, b: Double
-    /// Fraction of ROI pixels at or near full scale in the red channel.
+    /// Fraction of ROI pixels at or near full scale in the green channel (the one the pulse is read from;
+    /// red clips on any fingertip under the torch).
     var saturated: Double
 
     /// A fingertip over the lens and torch: red high, green well below it.

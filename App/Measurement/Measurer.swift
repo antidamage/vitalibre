@@ -36,6 +36,8 @@ final class Measurer: ObservableObject {
     private var age: Int?
     private var sex: Sex = .unspecified
     private var calibration = BPCalibration()
+    /// Called when a reading settles the flash state, so it can be remembered for the next scan. nil clears it.
+    var onFlashLearned: ((Bool?) -> Void)?
     private var usual: UsualBP?
 
     static func loadModel() -> BPModel {
@@ -49,7 +51,7 @@ final class Measurer: ObservableObject {
     var phaseIsLive: Bool { phase == .scanning }
     var isBusy: Bool { phase == .starting || phase == .scanning || phase == .analysing }
 
-    func start(simulate: Bool, age: Int?, sex: Sex, usual: UsualBP?, calibration: BPCalibration) {
+    func start(simulate: Bool, age: Int?, sex: Sex, usual: UsualBP?, calibration: BPCalibration, flash: Bool?) {
         guard !isBusy else { return }
         self.age = age; self.sex = sex; self.usual = usual; self.calibration = calibration
         session = ScanSession()
@@ -71,6 +73,7 @@ final class Measurer: ObservableObject {
         }
         Task {
             guard await CameraSource.authorise() else { fail(CameraError.denied.errorDescription ?? "Camera access is off."); return }
+            camera.remembered = flash
             camera.onSample = { [weak self] s in Task { @MainActor in self?.receive(s) } }
             do {
                 try await camera.start()
@@ -125,10 +128,15 @@ final class Measurer: ObservableObject {
                 if let beat = live.lastBeat, beat > (lastBeat ?? -1) + 0.3 || lastBeat == nil { lastBeat = beat }
             }
         }
-        if session.finished { finish() }
+        // The flash decision may still be running, and that decides how this reading was lit: not final until it
+        // lands - but the scan's own maximum ends it either way, so a trial that can never settle cannot hold the
+        // reading open (as on Android).
+        if session.finished, !camera.decisionPending || session.elapsed >= ScanSession.maxSeconds { finish() }
     }
 
     private func finish() {
+        // Only a camera scan ran the policy, so only it can say anything about the flash.
+        let flashed = usingCamera ? camera.flashUsed : nil
         stopSources()
         phase = .analysing
         let snapshot = session, model = model, age = age, sex = sex, usual = usual, calibration = calibration
@@ -141,7 +149,13 @@ final class Measurer: ObservableObject {
                 progress = 1; keptTrace = r.trace; keptTraceEnd = r.traceEnd
                 phase = .result(r)
                 Haptics.end(); Sounds.play(Sounds.done)
-            case .failure(let f): phase = .failed(f.message); Haptics.fail()
+                // A reading that produced a result is evidence for the next one's flash state - including that the
+                // policy never settled: a state this reading did not prove is cleared rather than kept.
+                if usingCamera { onFlashLearned?(flashed) }
+            case .failure(let f):
+                phase = .failed(f.message); Haptics.fail()
+                // A reading that failed says nothing about the flash, so the memory is cleared, not kept.
+                if usingCamera { onFlashLearned?(nil) }
             }
         }
     }

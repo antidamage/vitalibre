@@ -1,0 +1,21 @@
+{
+  "version": "prior-1",
+  "validated": false,
+  "baseSystolic": 118,
+  "baseDiastolic": 76,
+  "referenceAge": 30,
+  "ageSystolicPerYear": 0.5,
+  "ageDiastolicPerYear": 0.15,
+  "maleSystolicOffset": 2,
+  "maleDiastolicOffset": 1,
+  "terms": [
+    { "feature": "heartRate",       "mean": 70,   "scale": 12,   "systolic":  2.0, "diastolic":  1.5 },
+    { "feature": "crestFraction",   "mean": 0.30, "scale": 0.06, "systolic": -2.5, "diastolic": -1.5 },
+    { "feature": "skewness",        "mean": 0.60, "scale": 0.40, "systolic": -1.0, "diastolic": -0.5 },
+    { "feature": "reflectionIndex", "mean": 0.15, "scale": 0.10, "systolic":  2.0, "diastolic":  1.0 }
+  ],
+  "maxSystolicAdjust": 8,
+  "maxDiastolicAdjust": 5,
+  "halfWidthSystolic": 14,
+  "halfWidthDiastolic": 9
+}

@@ -1,0 +1,12 @@
+{
+  "displayName": "VitaLibre",
+  "bundleId": "nz.skull.vitalibre.claude",
+  "supportEmail": "",
+  "privacyURL": "",
+  "sourceURL": "",
+  "donations": [
+    { "tier": 1,  "productId": "nz.skull.vitalibre.claude.donation.1",  "fallbackPrice": "$1" },
+    { "tier": 10, "productId": "nz.skull.vitalibre.claude.donation.10", "fallbackPrice": "$10" },
+    { "tier": 50, "productId": "nz.skull.vitalibre.claude.donation.50", "fallbackPrice": "$50" }
+  ]
+}

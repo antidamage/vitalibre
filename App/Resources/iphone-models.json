@@ -1,0 +1,412 @@
+{
+ "source": "https://en.wikipedia.org/wiki/List_of_iPhone_models (identifiers; iPhone18,2 confirmed on a real device). Camera and flash specifications are deliberately not included: sources disagreed. A baseline is null until paired cuff data exists for that model.",
+ "models": [
+  {
+   "identifier": "iPhone10,3",
+   "name": "iPhone X",
+   "year": 2017,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone10,6",
+   "name": "iPhone X",
+   "year": 2017,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone11,2",
+   "name": "iPhone XS",
+   "year": 2018,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone11,4",
+   "name": "iPhone XS Max",
+   "year": 2018,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone11,6",
+   "name": "iPhone XS Max",
+   "year": 2018,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone11,8",
+   "name": "iPhone XR",
+   "year": 2018,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone12,1",
+   "name": "iPhone 11",
+   "year": 2019,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone12,3",
+   "name": "iPhone 11 Pro",
+   "year": 2019,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone12,5",
+   "name": "iPhone 11 Pro Max",
+   "year": 2019,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone12,8",
+   "name": "iPhone SE (2nd generation)",
+   "year": 2020,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone13,1",
+   "name": "iPhone 12 mini",
+   "year": 2020,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone13,2",
+   "name": "iPhone 12",
+   "year": 2020,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone13,3",
+   "name": "iPhone 12 Pro",
+   "year": 2020,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone13,4",
+   "name": "iPhone 12 Pro Max",
+   "year": 2020,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone14,4",
+   "name": "iPhone 13 mini",
+   "year": 2021,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone14,5",
+   "name": "iPhone 13",
+   "year": 2021,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone14,2",
+   "name": "iPhone 13 Pro",
+   "year": 2021,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone14,3",
+   "name": "iPhone 13 Pro Max",
+   "year": 2021,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone14,6",
+   "name": "iPhone SE (3rd generation)",
+   "year": 2022,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone14,7",
+   "name": "iPhone 14",
+   "year": 2022,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone14,8",
+   "name": "iPhone 14 Plus",
+   "year": 2022,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone15,2",
+   "name": "iPhone 14 Pro",
+   "year": 2022,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone15,3",
+   "name": "iPhone 14 Pro Max",
+   "year": 2022,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone15,4",
+   "name": "iPhone 15",
+   "year": 2023,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone15,5",
+   "name": "iPhone 15 Plus",
+   "year": 2023,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone16,1",
+   "name": "iPhone 15 Pro",
+   "year": 2023,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone16,2",
+   "name": "iPhone 15 Pro Max",
+   "year": 2023,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone17,4",
+   "name": "iPhone 16",
+   "year": 2024,
+   "baseline": null,
+   "camera": "wide",
+   "flash": "True Tone flash",
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone17,3",
+   "name": "iPhone 16 Plus",
+   "year": 2024,
+   "baseline": null,
+   "camera": "wide",
+   "flash": "True Tone flash",
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone17,1",
+   "name": "iPhone 16 Pro",
+   "year": 2024,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone17,2",
+   "name": "iPhone 16 Pro Max",
+   "year": 2024,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone17,5",
+   "name": "iPhone 16e",
+   "year": 2025,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone18,3",
+   "name": "iPhone 17",
+   "year": 2025,
+   "baseline": null,
+   "camera": "wide",
+   "flash": "True Tone flash",
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone18,1",
+   "name": "iPhone 17 Pro",
+   "year": 2026,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone18,2",
+   "name": "iPhone 17 Pro Max",
+   "year": 2026,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": true
+  },
+  {
+   "identifier": "iPhone18,5",
+   "name": "iPhone 17e",
+   "year": 2026,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": false
+  },
+  {
+   "identifier": "iPhone19,2",
+   "name": "iPhone 18 Pro",
+   "year": 2026,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": false
+  },
+  {
+   "identifier": "iPhone19,3",
+   "name": "iPhone 18 Pro Max",
+   "year": 2026,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": false
+  },
+  {
+   "identifier": "iPhone19,7",
+   "name": "iPhone 18 Pro Max",
+   "year": 2026,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": false
+  },
+  {
+   "identifier": "iPhone19,4",
+   "name": "iPhone Duo",
+   "year": 2026,
+   "baseline": null,
+   "camera": "wide",
+   "flash": null,
+   "flashSpectrum": null,
+   "identifierVerified": false
+  }
+ ],
+ "notes": [
+  "flash: Apple's wording where read from apple.com/iphone-NN/specs (iPhone 16, 16 Plus, 17); null elsewhere, not yet checked.",
+  "flashSpectrum: Apple does not publish LED wavelengths. null until a published or measured spectrum is found for that model.",
+  "camera: which rear camera the scan uses. 'wide' (main) everywhere for now; 'ultraWide' is the alternative to try on Pro models. Unverified which lens sits nearest the flash.",
+  "identifierVerified false: identifier from a single source and not seen on a real device. iPhone18,2 is confirmed on a real device.",
+  "baseline: per-model correction, null until paired cuff data exists for that model."
+ ]
+}

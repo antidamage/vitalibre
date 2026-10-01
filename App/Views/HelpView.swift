@@ -31,9 +31,9 @@ struct HelpView: View {
                 card("Blood pressure", [
                     "The blood pressure figure is an estimate derived from pulse-shape features. Before calibration it is shown as a range; after calibration, as a single figure for each component. A camera cannot measure blood pressure on its own. Without calibration, version 1 starts from typical values for your age and sex and adjusts them by a small, capped amount. It has not been clinically validated.",
                     "For reference, published calibration-free camera methods have a typical error of about 13–16 mmHg systolic and 7–9 mmHg diastolic. That is two to three times worse than the ISO 81060-2 criterion (mean difference within 5 mmHg, standard deviation within 8 mmHg). Finger-camera heart rate is typically within about 2 beats per minute of an ECG at rest.",
-                    "Calibration: after a reading, tap Calibrate and enter the value shown by a validated cuff taken at the same time. The estimate shifts to match your cuff. The remaining error is about the spread of your own calibration readings, and it is only as good as the cuff used. Calibration improves how well the estimate follows your own readings; it does not make it a medical measurement.",
                     "Do not use these results to make medical decisions. For an accurate blood pressure reading, use a clinically validated blood pressure monitor.",
                 ])
+                card(Publisher.policy.calibrationHowTitle, Publisher.policy.calibrationHow.components(separatedBy: "\n\n"))
                 card("Getting a good reading", [
                     "Sit still for a few minutes first. Rest your fingertip lightly over the lens and flash together, with no pressure. Keep the hand at heart height and don't talk.",
                     "Cold hands, pressing hard, movement, bright sunlight, dark skin tones and some devices all reduce accuracy. Optical pulse sensing is less reliable on darker skin, and blood pressure error is larger at high and low pressures and in older people.",

@@ -26,6 +26,8 @@ struct Policy: Decodable {
     let disclaimer: String
     let disclaimerBody: String
     let regulatory: String
+    let calibrationHowTitle: String
+    let calibrationHow: String
 }
 
 enum Publisher {

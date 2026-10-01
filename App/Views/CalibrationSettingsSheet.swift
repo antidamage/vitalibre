@@ -40,7 +40,14 @@ struct CalibrationSettingsSheet: View {
                     }
                 }
                 .padding(16).panel()
-                Spacer()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionTitle(text: Publisher.policy.calibrationHowTitle)
+                        ForEach(Publisher.policy.calibrationHow.components(separatedBy: "\n\n"), id: \.self) { BodyText(text: $0) }
+                    }
+                    .padding(16).frame(maxWidth: .infinity, alignment: .leading).panel()
+                }
             }
             .padding(20)
         }

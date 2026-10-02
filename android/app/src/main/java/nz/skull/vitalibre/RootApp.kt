@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +65,15 @@ fun RootApp(env: AppEnv) {
     }
     var tab by rememberSaveable { mutableStateOf(AppTab.MEASURE) }
     var showSettings by remember { mutableStateOf(false) }
+
+    // A finished scan is filed the moment it lands, wherever the user is: this host
+    // outlives the measure screen, and the screen is rebuilt on every tab change.
+    // `file` is keyed by the scan, so seeing the same result again cannot add a
+    // second reading.
+    val phase = env.measurer.phase
+    LaunchedEffect(phase) {
+        if (phase is Measurer.Phase.Result) env.readings.file(phase.result, env.measurer.scanId)
+    }
 
     CompositionLocalProvider(LocalPalette provides palette, LocalEnv provides env) {
         Box(Modifier.fillMaxSize().background(palette.backgroundGradient)) {

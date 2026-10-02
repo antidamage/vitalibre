@@ -72,7 +72,7 @@ fun ReadingsScreen() {
     val p = LocalPalette.current
     val store = env.readings
     var starredOnly by remember { mutableStateOf(false) }
-    val shown = if (starredOnly) store.readings.filter { it.starred } else store.readings
+    val shown = if (starredOnly) store.savedReadings.filter { it.starred } else store.savedReadings
     val df = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -84,11 +84,21 @@ fun ReadingsScreen() {
                 ) { Text(label, color = if (on) p.readout else p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM)) }
             }
             Box(Modifier.weight(1f))
-            Box(Modifier.size(46.dp).console().pressable({ env.activity.shareText(store.exportText()) }, enabled = store.readings.isNotEmpty()), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(46.dp).console().pressable({ env.activity.shareText(store.exportText()) }, enabled = store.savedReadings.isNotEmpty()), contentAlignment = Alignment.Center) {
                 Icon(Icons.Filled.Share, "Export all readings as text", tint = p.readoutSecondary, modifier = Modifier.size(20.dp))
             }
         }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
+            if (shown.isEmpty()) {
+                item {
+                    Text(
+                        if (starredOnly) "Nothing starred yet."
+                        else "Nothing kept yet. A reading is filed on Measure the moment it finishes — tap it there to keep it.",
+                        color = p.readoutSecondary, style = Fonts.rajdhani(17.sp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
+                    )
+                }
+            }
             items(shown, key = { it.id }) { r ->
                 val state = rememberSwipeToDismissBoxState(confirmValueChange = {
                     if (it == SwipeToDismissBoxValue.EndToStart) { store.delete(r.id); true } else false

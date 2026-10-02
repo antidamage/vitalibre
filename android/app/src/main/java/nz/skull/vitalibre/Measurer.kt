@@ -67,9 +67,14 @@ class Measurer(context: Context) {
 
     val isBusy get() = phase is Phase.Starting || phase is Phase.Scanning || phase is Phase.Analysing
 
+    /** The identity of the scan in progress. A filed reading is keyed by it, so one scan lands in the log once. */
+    var scanId: String = java.util.UUID.randomUUID().toString()
+        private set
+
     fun start(owner: LifecycleOwner, palette: Palette, age: Int?, sex: Sex, usual: UsualBP?, calibration: BPCalibration, simulate: Boolean = false,
               rememberedFlash: Boolean? = null, onFlashLearned: (Boolean?) -> Unit = {}) {
         if (isBusy) return
+        scanId = java.util.UUID.randomUUID().toString()
         flashLearned = onFlashLearned
         camera.remembered = rememberedFlash
         progress = 0.0; liveHeartRate = null; liveBP = null; lastBeat = null; traceImage = null; keptImage = null

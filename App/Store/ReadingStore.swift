@@ -1,21 +1,12 @@
 import Foundation
 
-struct Reading: Identifiable, Codable, Equatable {
-    var id = UUID()
-    var date: Date
-    var heartRate: Double
-    var bp: BPRange
-    var quality: Double
-    var level: QualityLevel
-    var duration: Double
-    var modelVersion: String
-    var starred = false
-}
-
 /// The user's own readings, one JSON file in Application Support. Written
 /// atomically; never read by anything but this app, never transmitted.
+///
+/// The rules live in `ReadingLog`, which is pure and unit-tested; this is the
+/// file and the observable wrapper around them.
 final class ReadingStore: ObservableObject {
-    @Published private(set) var readings: [Reading] = []
+    @Published private(set) var log = ReadingLog()
     private let url: URL
 
     init(directory: URL? = nil) {
@@ -23,48 +14,54 @@ final class ReadingStore: ObservableObject {
             .appendingPathComponent("VitaLibre", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         url = base.appendingPathComponent("readings.json")
-        load()
+        if let data = try? Data(contentsOf: url) { log = ReadingLog.decoded(from: data) }
     }
 
-    private func load() {
-        guard let data = try? Data(contentsOf: url) else { return }
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-        readings = ((try? decoder.decode([Reading].self, from: data)) ?? []).sorted { $0.date > $1.date }
+    private func commit() {
+        log.prune()
+        if let data = log.encoded() { try? data.write(to: url, options: .atomic) }
     }
 
-    private func save() {
-        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(readings) { try? data.write(to: url, options: .atomic) }
-    }
+    /// What Readings lists: the readings the user kept.
+    var savedReadings: [Reading] { log.savedReadings }
 
+    /// Today's log, kept or not, newest first.
+    var todaysReadings: [Reading] { log.todaysReadings }
+
+    func reading(_ id: UUID?) -> Reading? { log.reading(id) }
+
+    /// The reading filed for a scan, if one has been.
+    func reading(forScan scanID: UUID?) -> Reading? { log.reading(forScan: scanID) }
+
+    /// Files a finished scan in today's log, not kept, so nothing is lost by not
+    /// saving it. Keyed by the scan: filing the same scan again refreshes that one
+    /// reading rather than adding another.
     @discardableResult
-    func add(_ result: ScanResult, at date: Date = Date()) -> Reading {
-        let r = Reading(date: date, heartRate: result.heartRate, bp: result.bp, quality: result.quality,
-                        level: result.level, duration: result.duration, modelVersion: result.modelVersion)
-        readings.insert(r, at: 0)
-        save()
+    func file(_ result: ScanResult, scanID: UUID, at date: Date = Date()) -> Reading {
+        let r = log.file(result, scanID: scanID, at: date)
+        commit()
         return r
     }
 
-    /// Every reading, oldest first, as plain text one reading per line.
-    func exportText() -> String {
-        let stamp = DateFormatter(); stamp.dateFormat = "yyyy-MM-dd HH:mm"
-        var lines = ["VitaLibre readings (\(readings.count))",
-                     "Heart rate in bpm; blood pressure in mmHg. Values are estimates. Not a medical device.", ""]
-        for r in readings.sorted(by: { $0.date < $1.date }) {
-            lines.append("\(stamp.string(from: r.date))  HR \(Int(r.heartRate.rounded()))  BP \(r.bp.text)  quality \(r.level.rawValue)\(r.starred ? "  starred" : "")")
-        }
-        return lines.joined(separator: "\n")
+    func setSaved(_ id: UUID?, _ saved: Bool) {
+        log.setSaved(id, saved)
+        commit()
+    }
+
+    func toggleSaved(_ id: UUID) {
+        log.toggleSaved(id)
+        commit()
     }
 
     func toggleStar(_ id: UUID) {
-        guard let i = readings.firstIndex(where: { $0.id == id }) else { return }
-        readings[i].starred.toggle()
-        save()
+        log.toggleStar(id)
+        commit()
     }
 
     func delete(_ ids: [UUID]) {
-        readings.removeAll { ids.contains($0.id) }
-        save()
+        log.delete(ids)
+        commit()
     }
+
+    func exportText() -> String { log.exportText() }
 }

@@ -4,6 +4,8 @@ enum AppTab: Hashable { case measure, readings, help, about, donate }
 
 struct RootView: View {
     @EnvironmentObject private var prefs: Preferences
+    @EnvironmentObject private var measurer: Measurer
+    @EnvironmentObject private var readings: ReadingStore
     @Environment(\.colorScheme) private var scheme
     @State private var tab: AppTab = .measure
     @State private var showSettings = false
@@ -44,6 +46,13 @@ struct RootView: View {
             SettingsView()
                 .environment(\.palette, palette)
                 .presentationDetents([.large])
+        }
+        // Filed here, not on the measure screen: that screen is rebuilt on every
+        // tab change, and a scan that finishes while another tab is showing has to
+        // land in the log just the same. `file` is keyed by the scan, so seeing the
+        // same result again cannot add a second reading.
+        .onChange(of: measurer.phase) { _, phase in
+            if case .result(let r) = phase { readings.file(r, scanID: measurer.scanID) }
         }
     }
 

@@ -158,14 +158,23 @@ the LED colour. A gear at the top right of every screen opens Settings.
   "keep still"); a three-state quality lamp in the LED colour. Scan stops at
   **15 seconds of usable signal** (minimum 8 s before a result, hard cap 45 s).
   After a result: a **Save** button below the orb in the ring gradient colours;
-  Share (text, and image of the orb) appears with it.
+  Share (text, and image of the orb) appears with it. The reading is filed in
+  **Today's readings** the moment it finishes, saved or not, so nothing is lost by
+  not pressing Save; Save then marks it kept (it reads Saved and is disabled), and a
+  recalibration updates that filed reading instead of adding another. Filing is keyed by
+  the scan's own id and happens in the tab host rather than on Measure, so a scan that
+  finishes while another tab is showing is filed just the same, and no scan is filed
+  twice. **The fold line rests just above the bottom bar** - see the revision of
+  2026-10-03.
 - **Front disclaimer** ("Not a medical device. Estimates only.") sits on
   Measure with an **Acknowledge** link at its bottom. Acknowledging stores the
   timestamp and hides it permanently. Settings shows "Acknowledged <date>" and
   "Show it again".
-- **Readings**: newest first; tapping a row stars it (☆ drawn on every row,
-  ⭐ when set); filter above the list: All / Starred; swipe to delete.
-  Row: date, HR, BP range, quality.
+- **Readings**: the readings the user kept, newest first; tapping a row stars it (☆
+  drawn on every row, ⭐ when set); filter above the list: All / Starred; swipe to
+  delete. Row: date, HR, BP range, quality. A reading taken today and not kept is not
+  listed here - it is in Today's readings on Measure, and one tap there keeps it or
+  drops it again. Empty states: "Nothing kept yet. …" and "Nothing starred yet."
 - **Help**: how the technique works (green light, ~1% AC component, filter,
   beat detector, quality gate, feature-based estimate), honest accuracy,
   caveats (skin tone, age, motion, pressure, cold hands, ambient light, device
@@ -188,7 +197,13 @@ the LED colour. A gear at the top right of every screen opens Settings.
 ## Data separation
 
 - `readings.json` (Application Support, excluded from backup? no — included,
-  it is the user's own data) holds only readings and preferences.
+  it is the user's own data) holds only readings and preferences. It carries two kinds
+  of reading: the ones the user kept (`saved`), which Readings lists, and the ones taken
+  today but not kept, which only the fold on Measure shows. A file written before the log
+  existed has no `saved` field and reads as kept; an unkept reading from an earlier day is
+  dropped when the file is next written, so only today's unkept readings are ever held. A
+  reading also carries the `scan` it came from, which is what makes filing that scan again
+  refresh its row instead of adding another.
 - `publisher/config/*.json` is bundled read-only and holds everything that is
   the publisher's: bundle id, product ids, URLs, policy text. A test fails if a
   publisher identifier appears in `App/**/*.swift`.
@@ -307,6 +322,55 @@ These supersede anything above that disagrees.
   and "press more lightly" use counts green pixels at full scale. iOS counted red, which clips on nearly
   every pixel of a correctly covered fingertip under the torch, so a good finger could read as uncovered.
   `Core/ScanSession.swift` and `android/core`'s `ScanSession.kt` both say green now.
+
+## Revisions, 2026-10-03 (the session fold on Measure)
+
+Adeline, 2026-10-03: "place the fold line just above the bottom menu".
+
+- **Today's readings is a fold on Measure**, the dashboard's advanced fold
+  (`nova-ha-dashboard/specs/advanced-fold.md`) on a phone screen, one implementation per
+  platform (`App/Views/FoldBand.swift`; `android/app/src/main/java/nz/skull/vitalibre/FoldBand.kt`).
+- **The line rests on the bottom of the screen area, just above the bottom bar**, with the
+  caption `TODAY'S READINGS`, the count of today's readings and a solid flattened triangle
+  pointing at what it guards, right-aligned above it. The line is the theme accent
+  (`palette.line`, this app's port of the dashboard's `--cyber-line`) with the accent's lit
+  edge under it: the dashboard's sunken bevel, at 45% instead of the dashboard's 18%, which
+  does not read against a near-black foot of screen.
+- **The band**: 80 pt of upward travel is caught by `d(p) = 28(1 - (1 - p/80)^2)`, nearly
+  1:1 at first and moving nothing by 80 pt; released inside the band the region springs back
+  over 180 ms, ease-out; at 80 pt it breaks and the region follows the finger 1:1 from there.
+  Pulling back down to nothing re-locks it, with no resistance on the way back. A tap opens
+  or closes it, which is also what VoiceOver and TalkBack activate, and the triangle flips to
+  point down. With reduced motion the break lands on the 1:1 position with no animation.
+- **Opening changes no other layout**: the fold holds a room at the foot of the area
+  (`FoldMetrics.room`) whether it is open or shut, and the room is a height in the layout rather
+  than a measurement — a preference over the same views reports a zero rect, which is what the
+  earlier guessed cap was papering over. Its own 30 pt line fills the bottom of that room, so the
+  line always rests just above the bottom menu, opening moves nothing above it, and the panel can
+  never reach a control. Both platforms pass the same cap, `FoldMetrics.maxReveal` (the room less
+  the line).
+- **With nothing past the line it does not open**: the fold is offered only when today's log has a
+  reading, and it stays shut if the room it opens into is smaller than a row (`FoldMetrics.minReveal`,
+  44 pt — a floor in case that room ever shrinks, since the fixed room is wider than one). If the
+  day's log empties while it is open it closes itself.
+- **A finished scan is filed the moment it lands**, unsaved, in today's log: that is what stops
+  the last reading being lost by not saving it. Filing is keyed by the scan's own id and happens
+  in the tab host, which outlives the measure screen: a scan that finishes while another tab is
+  showing still lands in the log, and returning to Measure, pressing Save or recalibrating
+  refreshes that one reading instead of adding another. Measure is the only screen that shows an
+  unkept reading; Readings lists the kept ones. A row reads heart rate, `BPM`, the
+  blood-pressure text (one figure per component once calibrated, the population range until
+  then), the time, and a star for kept — tap the row to keep it, tap again to drop it.
+- **The rules live in `Core/ReadingLog.swift`**, pure, with no file and no view; `ReadingStore`
+  is the observable wrapper over `readings.json`. Seven tests in
+  `Tests/VitaLibreCoreTests/ReadingLogTests.swift` cover what the fold turns on: filing one scan
+  twice leaves one reading, a recalibration refreshes in place, Save adds no second reading, two
+  scans are two readings newest first, the prune drops only an earlier day's unkept reading, a
+  file written before the log existed reads as kept, and the scan key survives the file.
+- **Past the line is a plain scrolling list** on both platforms; the dashboard's per-panel axis
+  handling (landscape vertical, portrait sideways) does not apply, since a phone screen has one
+  axis. Verified on the simulator: the line and its caption sit at the foot of the measure area
+  with only the bottom bar below them, and the panel at its cap stops below the buttons.
 
 ## Android build (branch `android`)
 

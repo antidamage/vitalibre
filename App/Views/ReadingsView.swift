@@ -5,7 +5,7 @@ struct ReadingsView: View {
     @Environment(\.palette) private var palette
     @State private var starredOnly = false
 
-    private var shown: [Reading] { starredOnly ? store.readings.filter(\.starred) : store.readings }
+    private var shown: [Reading] { starredOnly ? store.savedReadings.filter(\.starred) : store.savedReadings }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -15,12 +15,21 @@ struct ReadingsView: View {
                 Spacer()
                 ShareLink(item: store.exportText()) { Image(systemName: "square.and.arrow.up") }
                     .buttonStyle(ConsoleStyle())
-                    .disabled(store.readings.isEmpty)
+                    .disabled(store.savedReadings.isEmpty)
                     .accessibilityLabel("Export all readings as text")
             }
             .padding(.horizontal, 22).padding(.top, 6)
             if shown.isEmpty {
-                Spacer()
+                VStack {
+                    Spacer()
+                    Text(starredOnly
+                         ? "Nothing starred yet."
+                         : "Nothing kept yet. A reading is filed on Measure the moment it finishes — tap it there to keep it.")
+                        .font(.rajdhani(17)).foregroundStyle(palette.readoutSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 34)
+                    Spacer()
+                }
             } else {
                 List {
                     ForEach(shown) { reading in

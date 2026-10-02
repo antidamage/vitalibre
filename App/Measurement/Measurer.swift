@@ -25,6 +25,9 @@ final class Measurer: ObservableObject {
     @Published private(set) var keptTrace: [Double] = []
     @Published private(set) var keptTraceEnd = 0.0
     @Published private(set) var scanStart = Date()
+    /// The identity of the scan in progress. A filed reading is keyed by it, so
+    /// one scan can only ever land in the log once.
+    @Published private(set) var scanID = UUID()
     /// Zero of the sweep: the moment the finger covered the lens, so one revolution is one reading.
     @Published private(set) var sweepOrigin = Date()
 
@@ -53,6 +56,7 @@ final class Measurer: ObservableObject {
 
     func start(simulate: Bool, age: Int?, sex: Sex, usual: UsualBP?, calibration: BPCalibration, flash: Bool?) {
         guard !isBusy else { return }
+        scanID = UUID()
         self.age = age; self.sex = sex; self.usual = usual; self.calibration = calibration
         session = ScanSession()
         progress = 0; trace = []; traceEnd = 0; lastUIUpdate = -1

@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
@@ -46,7 +48,6 @@ fun MeasureScreen() {
     val p = LocalPalette.current
     val m = env.measurer
     val prefs = env.prefs
-    var savedId by remember { mutableStateOf<String?>(null) }
     var orbBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var calibrating by remember { mutableStateOf(false) }
     val idleOrigin = remember { SystemClock.uptimeMillis().toDouble() }
@@ -71,7 +72,6 @@ fun MeasureScreen() {
         when (phase) {
             is Measurer.Phase.Idle, is Measurer.Phase.Result, is Measurer.Phase.Failed -> {
                 Sounds.play(Sounds.START)
-                savedId = null
                 env.activity.ensureCamera(
                     onGranted = { m.start(env.activity, p, if (prefs.age > 0) prefs.age else null, prefs.sex, prefs.usual, prefs.calibration, env.activity.simulate, prefs.workingFlash) { prefs.rememberFlash(it) } },
                     onDenied = { m.fail("Camera access is off. Allow it in the app settings to take a reading.") },
@@ -103,8 +103,14 @@ fun MeasureScreen() {
                     Text(m.guidance.text, color = p.readout, style = Fonts.chakra(15.sp, Fonts.Face.MEDIUM), textAlign = TextAlign.Center)
                 is Measurer.Phase.Result -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val r = phase.result
-                    RingButton(if (savedId == null) "Save" else "Saved", enabled = savedId == null) {
-                        Sounds.play(Sounds.CLICK); savedId = env.readings.add(r).id
+                    val kept = env.readings.readingForScan(m.scanId)?.saved == true
+                    RingButton(if (kept) "Saved" else "Save", enabled = !kept) {
+                        Sounds.play(Sounds.CLICK)
+                        // The scan is already in today's log by the time this is on
+                        // screen (the tab host files it); this is what keeps it in
+                        // Readings. Filing again is harmless: it lands on the one
+                        // reading this scan has.
+                        env.readings.setSaved(env.readings.file(r, m.scanId).id, true)
                     }
                     RingButton("Calibrate") { Sounds.play(Sounds.CLICK); calibrating = true }
                     Box(Modifier.size(44.dp).clickable { env.activity.shareText(shareText(r.heartRate, r.bp.text)) }, contentAlignment = Alignment.Center) {
@@ -119,7 +125,15 @@ fun MeasureScreen() {
                 else -> Unit
             }
         }
+        // Everything the controls leave, then the fold's room held open at the foot of the area: its
+        // line rests just above the bottom menu whether it is open or shut, opening moves nothing above
+        // it, and the panel cannot reach a control.
         Spacer(Modifier.weight(1f))
+        Box(Modifier.fillMaxWidth().height(FoldMetrics.room), contentAlignment = Alignment.BottomCenter) {
+            FoldBand("Today's readings", env.readings.todaysReadings.size, FoldMetrics.maxReveal) {
+                TodayFold(env.readings)
+            }
+        }
     }
 
     val shown = phase as? Measurer.Phase.Result
@@ -177,6 +191,41 @@ fun CalibrateDialog(startSystolic: Int, startDiastolic: Int, onDismiss: () -> Un
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 RingButton("Save", enabled = CalibrationPoint.isPlausible(sys.toDouble(), dia.toDouble())) { onSave(sys, dia) }
+            }
+        }
+    }
+}
+
+/** The day's log, past the line: every reading taken today, kept or not. */
+@Composable
+private fun TodayFold(store: ReadingStore) {
+    val p = LocalPalette.current
+    val df = remember { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) }
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Text(
+                "Taken today. Tap a reading to keep it in Readings, or to drop it again.",
+                color = p.readoutSecondary, style = Fonts.rajdhani(13.sp),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 8.dp),
+            )
+        }
+        items(store.todaysReadings, key = { it.id }) { r ->
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable { Sounds.play(Sounds.CLICK); store.toggleSaved(r.id) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("${r.heartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(30.sp))
+                Text(
+                    "BPM", color = p.readoutSecondary, style = Fonts.chakra(10.sp, Fonts.Face.MEDIUM),
+                    modifier = Modifier.padding(start = 6.dp).weight(1f),
+                )
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(r.bp.text, color = p.readout, style = Fonts.rajdhani(15.sp))
+                    Text(df.format(java.util.Date(r.epochMillis)), color = p.readoutSecondary, style = Fonts.rajdhani(12.sp))
+                }
+                Text(if (r.saved) "⭐" else "☆", color = p.led, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
             }
         }
     }

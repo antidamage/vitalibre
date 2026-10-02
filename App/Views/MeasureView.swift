@@ -11,7 +11,6 @@ struct MeasureView: View {
     @EnvironmentObject private var readings: ReadingStore
     @EnvironmentObject private var prefs: Preferences
     @Environment(\.palette) private var palette
-    @State private var savedID: UUID?
     @State private var orbFrame: CGRect = .zero
     @State private var sharedImage: SharedImage?
     @State private var idleOrigin = Date()
@@ -38,12 +37,15 @@ struct MeasureView: View {
             .onTapGesture(perform: tapOrb)
 
             statusArea.padding(.top, 18).frame(minHeight: 70, alignment: .top)
-            Spacer(minLength: 8)
+            // The fold's room, held open at the foot of the area whether it is open or shut, so
+            // opening moves nothing above it, its line rests just above the bottom bar, and the
+            // panel cannot reach the controls.
+            FoldBand(label: "Today's readings", count: readings.todaysReadings.count,
+                     maxReveal: FoldMetrics.maxReveal) { todayPanel }
+                .frame(maxWidth: .infinity)
+                .frame(height: FoldMetrics.room, alignment: .bottom)
         }
         .onPreferenceChange(OrbFrameKey.self) { orbFrame = $0 }
-        .onChange(of: measurer.phase) { _, phase in
-            if case .scanning = phase { savedID = nil }
-        }
         .sheet(isPresented: $calibrating) {
             if case .result(let r) = measurer.phase {
                 CalibrateSheet(result: r) { point in
@@ -103,6 +105,50 @@ struct MeasureView: View {
         }
     }
 
+    // MARK: Today's readings, past the line
+
+
+    private var todayPanel: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                Text("Taken today. Tap a reading to keep it in Readings, or to drop it again.")
+                    .font(.rajdhani(13)).foregroundStyle(palette.readoutSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                ForEach(readings.todaysReadings) { r in todayRow(r) }
+            }
+        }
+        .background(palette.surface)
+    }
+
+    /// Tap a reading to keep it, or to drop it again.
+    private func todayRow(_ r: Reading) -> some View {
+        Button {
+            DialClick.shared.play()
+            readings.toggleSaved(r.id)
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Text("\(Int(r.heartRate.rounded()))").font(.rajdhani(30)).monospacedDigit().foregroundStyle(palette.readout)
+                Text("BPM").font(.chakra(10)).foregroundStyle(palette.readoutSecondary)
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(r.bp.text).font(.rajdhani(15)).foregroundStyle(palette.readout)
+                    Text(r.date.formatted(date: .omitted, time: .shortened))
+                        .font(.rajdhani(12)).foregroundStyle(palette.readoutSecondary)
+                }
+                Image(systemName: r.isSaved ? "star.fill" : "star")
+                    .font(.system(size: 15))
+                    .foregroundStyle(r.isSaved ? palette.led : palette.readoutSecondary)
+                    .padding(.leading, 4)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .overlay(alignment: .bottom) { Rectangle().fill(palette.line).frame(height: 1) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressStyle())
+        .accessibilityLabel("\(Int(r.heartRate.rounded())) bpm, \(r.bp.text), \(r.date.formatted(date: .omitted, time: .shortened))\(r.isSaved ? ", kept" : "")")
+    }
+
     // MARK: Under the orb
 
     @ViewBuilder private var statusArea: some View {
@@ -127,10 +173,14 @@ struct MeasureView: View {
     }
 
     private func actions(_ r: ScanResult) -> some View {
-        HStack(spacing: 12) {
-            RingButton(title: savedID == nil ? "Save" : "Saved", disabled: savedID != nil) {
+        let kept = readings.reading(forScan: measurer.scanID)?.isSaved ?? false
+        return HStack(spacing: 12) {
+            RingButton(title: kept ? "Saved" : "Save", disabled: kept) {
                 DialClick.shared.play()
-                savedID = readings.add(r).id
+                // The scan is already in today's log by the time this is on screen
+                // (RootView files it); this is what keeps it in Readings. Filing
+                // again is harmless: it lands on the one reading this scan has.
+                readings.setSaved(readings.file(r, scanID: measurer.scanID).id, true)
             }
             RingButton(title: "Calibrate") {
                 DialClick.shared.play()

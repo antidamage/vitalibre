@@ -167,6 +167,23 @@ private fun PictureGlyph(color: androidx.compose.ui.graphics.Color) {
     }
 }
 
+/** The row's kept mark: a bookmark, not a star — the star is the reading's own mark in Readings. */
+@Composable
+private fun BookmarkGlyph(filled: Boolean, color: androidx.compose.ui.graphics.Color) {
+    Canvas(Modifier.padding(start = 8.dp).size(11.dp, 15.dp)) {
+        val notch = size.height * 0.72f
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(0f, 0f)
+            lineTo(size.width, 0f)
+            lineTo(size.width, size.height)
+            lineTo(size.width / 2f, notch)
+            lineTo(0f, size.height)
+            close()
+        }
+        if (filled) drawPath(path, color) else drawPath(path, color, style = Stroke(1.6.dp.toPx()))
+    }
+}
+
 /** Pairs a cuff reading with the scan on screen. */
 @Composable
 fun CalibrateDialog(startSystolic: Int, startDiastolic: Int, onDismiss: () -> Unit, onSave: (Int, Int) -> Unit) {
@@ -225,7 +242,7 @@ private fun TodayFold(store: ReadingStore) {
                     Text(r.bp.text, color = p.readout, style = Fonts.rajdhani(15.sp))
                     Text(df.format(java.util.Date(r.epochMillis)), color = p.readoutSecondary, style = Fonts.rajdhani(12.sp))
                 }
-                Text(if (r.saved) "⭐" else "☆", color = p.led, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
+                BookmarkGlyph(filled = r.saved, color = if (r.saved) p.led else p.readoutSecondary)
             }
         }
     }

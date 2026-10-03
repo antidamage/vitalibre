@@ -346,30 +346,58 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
 
 - **Today's readings is a fold on Measure**, the dashboard's advanced fold
   (`nova-ha-dashboard/specs/advanced-fold.md`) on a phone screen, one implementation per
-  platform (`App/Views/FoldBand.swift`; `android/app/src/main/java/nz/skull/vitalibre/FoldBand.kt`).
-- **The line rests on the bottom of the screen area, just above the bottom bar**, with the
+  platform (`App/Views/FoldPage.swift` and `App/Views/FoldDivider.swift`;
+  `android/app/src/main/java/nz/skull/vitalibre/FoldBand.kt`).
+- **The line rests on the bottom of the page, just above the bottom bar**, with the
   caption `TODAY'S READINGS`, the count of today's readings and a solid flattened triangle
   pointing at what it guards, right-aligned above it. The line is the theme accent
   (`palette.line`, this app's port of the dashboard's `--cyber-line`) with the accent's lit
   edge under it: the dashboard's sunken bevel, at 45% instead of the dashboard's 18%, which
-  does not read against a near-black foot of screen.
-- **The band**: 80 pt of upward travel is caught by `d(p) = 28(1 - (1 - p/80)^2)`, nearly
-  1:1 at first and moving nothing by 80 pt; released inside the band the region springs back
-  over 180 ms, ease-out; at 80 pt it breaks and the region follows the finger 1:1 from there.
-  Pulling back down to nothing re-locks it, with no resistance on the way back. A tap opens
-  or closes it, which is also what VoiceOver and TalkBack activate, and the triangle flips to
-  point down. With reduced motion the break lands on the 1:1 position with no animation.
-- **Opening changes no other layout**: the fold holds a room at the foot of the area
-  (`FoldMetrics.room`) whether it is open or shut, and the room is a height in the layout rather
-  than a measurement — a preference over the same views reports a zero rect, which is what the
-  earlier guessed cap was papering over. Its own 30 pt line fills the bottom of that room, so the
-  line always rests just above the bottom menu, opening moves nothing above it, and the panel can
-  never reach a control. Both platforms pass the same cap, `FoldMetrics.maxReveal` (the room less
-  the line).
-- **With nothing past the line it does not open**: the fold is offered only when today's log has a
-  reading, and it stays shut if the room it opens into is smaller than a row (`FoldMetrics.minReveal`,
-  44 pt — a floor in case that room ever shrinks, since the fixed room is wider than one). If the
-  day's log empties while it is open it closes itself.
+  does not read against a near-black foot of screen. `FoldMetrics.rest` (30 pt) is its height, on
+  both platforms.
+- **The whole screen is one page** (Adeline, 2026-10-03: "the whole screen (minus menu) should slide
+  up when the today's readings fold goes up"). Measure is one vertical scroller holding the orb, what
+  it is saying, the line, and the day's readings under it. Closed, the line rests just above the
+  bottom bar with the readings laid out under it: the page's content is already the viewport plus
+  the panel's own height, and the band is what keeps that overflow out of sight, which is why the
+  pull meets resistance rather than a page with nothing past it. Opened, the readings come in from
+  the foot as everything above the line slides away, and then scroll like any list. With nothing
+  taken today the page is exactly the viewport and the fold does not exist at all.
+- **The band** (Adeline: "pulling up grows in resistance against being dragged, before snapping at a
+  certain point and letting the hidden area scroll freely") is 80 pt of upward pull caught by
+  `d(p) = 28(1 - (1 - p/80)^2)` — nearly 1:1 at first, moving nothing by 80 pt — so the page moves by
+  the band's allowance and never by the finger. Those numbers are the dashboard's round-1 touch band
+  and its wheel band; the dashboard's current drag breaks at 160 px with 14 px of give
+  (`nova-ha-dashboard/specs/advanced-fold.md`, Round 2), sized for a full desktop page, where 80 pt
+  is the same fraction of a phone's height. Released inside the band the page returns to rest on the
+  platform's own animation — an 180 ms ease-out on Android, the scroll view's own return on iOS,
+  which is not a spring and does not need to be — and the release's own fling goes with it.
+- **The break**: at 80 pt the band lets go, the page catches up the 52 pt the band had been holding
+  back (220 ms, `cubic-bezier(0.2, 0.9, 0.3, 1.15)`, the dashboard's slight overshoot), and from
+  there the finger's own travel is the page's, so the hidden area scrolls freely with it. A finger
+  that lifts, or a new touch, part-way through the catch-up finishes it in one step rather than
+  cancelling what is left: the page always ends where following the input 1:1 would have put it.
+- **Re-lock** (Adeline: "when the page is scrolled back out of sight, the rubber band heals"):
+  brought back to its edge the fold closes — the triangle flips back to pointing up — and the next
+  pull meets the 80 pt band again rather than sliding straight through. There is no resistance on the
+  way back.
+- **With nothing past the line it does not open**: the fold exists only when there is a reading to
+  open into *and* the page overflows the viewport by at least a row (`FoldBand.minReveal`, 44 pt).
+  With nothing taken today the page is exactly the viewport and cannot be pulled at all. Geometry
+  alone is not enough: `FoldPage` takes whether there is anything to open into explicitly
+  (`hasContent`) rather than leaving the fold's existence to the caption's measured height. If the
+  day's log empties while the fold is open, the page falls back to the viewport and stops scrolling.
+- **A tap opens or closes it fully**, which is also what VoiceOver and TalkBack activate, and the
+  triangle flips to point down while it is open. With reduced motion the break and the spring land on
+  their positions with no animation.
+- **The band's numbers and its two rules are pure and shared**: `Core/FoldBand.swift` and its Kotlin
+  port in `android/core`, with the same tests on both sides — the near-1:1 start, the exact break at
+  80, the catch-up that lands the content where a pull that never met the band would have put it, and
+  the re-lock.
+- **Android still carries the reveal fold** (2026-10-03): the Kotlin band and its tests are in
+  `android/core`, but the Android measure screen keeps the earlier fold — a room at the foot of the
+  screen that the panel opens into (`FoldMetrics.room`) — until the page-wide slide can be finished
+  there. The iOS build leads the Android one, as always; the row's kept mark is a bookmark on both.
 - **A finished scan is filed the moment it lands**, unsaved, in today's log: that is what stops
   the last reading being lost by not saving it. Filing is keyed by the scan's own id and happens
   in the tab host, which outlives the measure screen: a scan that finishes while another tab is
@@ -377,17 +405,20 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
   refreshes that one reading instead of adding another. Measure is the only screen that shows an
   unkept reading; Readings lists the kept ones. A row reads heart rate, `BPM`, the
   blood-pressure text (one figure per component once calibrated, the population range until
-  then), the time, and a star for kept — tap the row to keep it, tap again to drop it.
+  then), the time, and a **bookmark for kept** — not a star, which is the reading's own mark in
+  Readings and cannot mean two things at once (Adeline, 2026-10-03: "don't use a star as the icon to
+  save it, as we already use that for favouriting") — tap the row to keep it, tap again to drop it.
 - **The rules live in `Core/ReadingLog.swift`**, pure, with no file and no view; `ReadingStore`
   is the observable wrapper over `readings.json`. Seven tests in
   `Tests/VitaLibreCoreTests/ReadingLogTests.swift` cover what the fold turns on: filing one scan
   twice leaves one reading, a recalibration refreshes in place, Save adds no second reading, two
   scans are two readings newest first, the prune drops only an earlier day's unkept reading, a
   file written before the log existed reads as kept, and the scan key survives the file.
-- **Past the line is a plain scrolling list** on both platforms; the dashboard's per-panel axis
-  handling (landscape vertical, portrait sideways) does not apply, since a phone screen has one
-  axis. Verified on the simulator: the line and its caption sit at the foot of the measure area
-  with only the bottom bar below them, and the panel at its cap stops below the buttons.
+- Verified on the simulator, iOS (2026-10-03): closed, the line and its caption sit at the foot of the
+  measure area with only the bottom bar below them, nothing of the readings shows, and the orb is
+  centred in the room above the line. The band itself is the part the shared tests hold
+  (`FoldBandTests`, both languages): the near-1:1 start, the break at exactly 80, the catch-up, and
+  the re-lock.
 
 ## Android build (branch `android`)
 
@@ -406,5 +437,7 @@ config with the iOS build through the asset path instead of copying them.
 - Haptics through the vibrator, sounds through a sound pool, both from the engine thread.
 - The iOS build is the source of truth for screens, copy and behaviour; the Android screens match it (the calibration screen has the typical resting pressure and the cuff-calibration count with Reset, nothing more).
 - The synthetic pulse (for testing the scan path) exists only in debug builds; a release build cannot run it.
-- Not yet on Android: Play Billing donations (the buttons are inactive) and the confetti.
+- Not yet on Android: Play Billing donations (the buttons are inactive), the confetti, and the
+  measure page's whole-screen slide — the fold there still opens into its own room at the foot of the
+  screen, and its row's kept mark is now a bookmark like the iOS build's.
 - **Licences on Android**: the app is GPL-3.0-or-later like the iOS build (same `LICENSE`). Compose, CameraX and AndroidX are Apache-2.0, which is compatible with GPLv3 and is credited in About. The Android manifest requests only CAMERA and VIBRATE; there is no network permission, so the "nothing is sent" statement holds there too. Both font licences (Chakra Petch, Rajdhani) ship in `App/Resources/Fonts`.

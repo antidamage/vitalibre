@@ -1,11 +1,6 @@
 import SwiftUI
 import UIKit
 
-private struct OrbFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
-}
-
 struct MeasureView: View {
     @EnvironmentObject private var measurer: Measurer
     @EnvironmentObject private var readings: ReadingStore
@@ -15,6 +10,9 @@ struct MeasureView: View {
     @State private var sharedImage: SharedImage?
     @State private var idleOrigin = Date()
     @State private var calibrating = false
+    /// Whether the fold is open: the line's own state, and what a pull changes.
+    @State private var foldOpen = false
+    @State private var fold = FoldCommands()
 
     private var isSimulator: Bool {
         #if targetEnvironment(simulator)
@@ -25,27 +23,20 @@ struct MeasureView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 8)
-            OrbView(input: orb, origin: measurer.phaseIsLive ? measurer.sweepOrigin : idleOrigin) {
-                CameraPreview(session: measurer.camera.session)
-            }
-            .background(GeometryReader { g in Color.clear.preference(key: OrbFrameKey.self, value: g.frame(in: .global)) })
-            .frame(maxWidth: 430)
-            .padding(.horizontal, 8)
-            .contentShape(Circle())
-            .onTapGesture(perform: tapOrb)
-
-            statusArea.padding(.top, 18).frame(minHeight: 70, alignment: .top)
-            // The fold's room, held open at the foot of the area whether it is open or shut, so
-            // opening moves nothing above it, its line rests just above the bottom bar, and the
-            // panel cannot reach the controls.
-            FoldBand(label: "Today's readings", count: readings.todaysReadings.count,
-                     maxReveal: FoldMetrics.maxReveal) { todayPanel }
-                .frame(maxWidth: .infinity)
-                .frame(height: FoldMetrics.room, alignment: .bottom)
+        // The whole screen is one page behind the fold's line: pulling it up slides everything
+        // above the line away and brings the day's readings in from the foot. The page is hosted
+        // in its own scroller, so the app's environment has to be handed to it explicitly.
+        FoldPage(isOpen: $foldOpen, commands: fold, hasContent: !readings.todaysReadings.isEmpty) { viewport in
+            page(viewport)
+                .environmentObject(measurer)
+                .environmentObject(readings)
+                .environmentObject(prefs)
+                .environment(\.palette, palette)
         }
-        .onPreferenceChange(OrbFrameKey.self) { orbFrame = $0 }
+        .onChange(of: readings.todaysReadings.isEmpty) { _, empty in
+            // Nothing left past the line: the fold has nothing to guard, so it shuts.
+            if empty { fold.close() }
+        }
         .sheet(isPresented: $calibrating) {
             if case .result(let r) = measurer.phase {
                 CalibrateSheet(result: r) { point in
@@ -56,6 +47,48 @@ struct MeasureView: View {
                 .presentationDetents([.medium])
             }
         }
+    }
+
+    // MARK: The page, above and past the line
+
+    @ViewBuilder private func page(_ viewport: CGSize) -> some View {
+        VStack(spacing: 0) {
+            // Everything above the line: the orb and what it is saying, centred in the room the
+            // line leaves. It is the part that slides away as the fold opens.
+            VStack(spacing: 0) {
+                Spacer(minLength: 8)
+                OrbView(input: orb, origin: measurer.phaseIsLive ? measurer.sweepOrigin : idleOrigin) {
+                    CameraPreview(session: measurer.camera.session)
+                }
+                // Hosted in its own tree, this view cannot send a preference out to MeasureView:
+                // the orb's frame comes back as a callback, which `shareOrb` needs.
+                .background(GeometryReader { g in
+                    let frame = g.frame(in: .global)
+                    Color.clear
+                        .onAppear { orbFrame = frame }
+                        .onChange(of: frame) { _, new in orbFrame = new }
+                })
+                .frame(maxWidth: 430)
+                .padding(.horizontal, 8)
+                .contentShape(Circle())
+                .onTapGesture(perform: tapOrb)
+                statusArea.padding(.top, 18).frame(minHeight: 70, alignment: .top)
+                Spacer(minLength: 8)
+            }
+            .frame(width: viewport.width, height: max(0, viewport.height - FoldMetrics.rest))
+            .clipped()
+
+            FoldDivider(label: "Today's readings", count: readings.todaysReadings.count,
+                        isOpen: foldOpen, canOpen: readings.todaysReadings.count > 0) {
+                fold.toggle()
+            }
+
+            // With nothing taken today there is nothing past the line, so the page is exactly the
+            // viewport and cannot be pulled at all: the fold does not exist until there is. The
+            // scroller is told the same thing, so no pull can open a band over an empty log.
+            if !readings.todaysReadings.isEmpty { todayPanel }
+        }
+        .frame(width: viewport.width)
     }
 
     // MARK: Orb state
@@ -107,16 +140,15 @@ struct MeasureView: View {
 
     // MARK: Today's readings, past the line
 
-
+    /// The rows flow on the page itself: pulling the page up is what brings them in, and the page
+    /// scrolls through them like anything else.
     private var todayPanel: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Text("Taken today. Tap a reading to keep it in Readings, or to drop it again.")
-                    .font(.rajdhani(13)).foregroundStyle(palette.readoutSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.bottom, 8)
-                ForEach(readings.todaysReadings) { r in todayRow(r) }
-            }
+        VStack(spacing: 0) {
+            Text("Taken today. Tap a reading to keep it in Readings, or to drop it again.")
+                .font(.rajdhani(13)).foregroundStyle(palette.readoutSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
+            ForEach(readings.todaysReadings) { r in todayRow(r) }
         }
         .background(palette.surface)
     }
@@ -136,7 +168,9 @@ struct MeasureView: View {
                     Text(r.date.formatted(date: .omitted, time: .shortened))
                         .font(.rajdhani(12)).foregroundStyle(palette.readoutSecondary)
                 }
-                Image(systemName: r.isSaved ? "star.fill" : "star")
+                // Not a star: the star is the reading's own mark in Readings, and one glyph
+                // cannot mean two things. A bookmark is what keeping it looks like.
+                Image(systemName: r.isSaved ? "bookmark.fill" : "bookmark")
                     .font(.system(size: 15))
                     .foregroundStyle(r.isSaved ? palette.led : palette.readoutSecondary)
                     .padding(.leading, 4)

@@ -420,6 +420,121 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
   (`FoldBandTests`, both languages): the near-1:1 start, the break at exactly 80, the catch-up, and
   the re-lock.
 
+## Revisions, 2026-10-04 (the graph is kept with the reading; a swinging rhythm is a note)
+
+Adeline, 2026-10-04: *"I want to save the heart rate graph with the saved readings. just show it as
+a horizontal band under the readin though. users should be able to tap it to make it bigger and
+scroll throuhg it, with two finger pinch to zoom and tap to dismiss again."* — and, on the reading
+rules: *"we're currently rejecting recordings that might include arrhythmia. don't abandon
+recordings due to unstable heart rate, and mark the reading as 'low quality or arrhythmia'"*, then
+*"note we should only reject/restart readings if the finger clearly isn't stable on the camera. you
+can work out the correct ranges, but timing shouldn't be a disqualifying factor"*.
+
+### The graph travels with the reading
+
+- **`Reading.trace`**: the run's filtered waveform, normalised -1...1, at the analysis rate
+  (60 Hz), rounded to three decimals. Optional, so a reading saved before this existed decodes
+  with none and simply has no graph. `ReadingLog.file` is the only writer, taking
+  `ScanResult.trace`.
+- **Full rate, not a decimated copy.** 15 s is about 900 samples, roughly 6 KB of JSON per
+  reading. Half the rate would halve that, and stair-step once the expanded view is zoomed: the
+  point of the bigger view is to see what arrived.
+- **Nothing else is stored.** A sample's time is its index over `ScanSession.analysisRate`, so the
+  array needs no start, no end and no timestamp of its own.
+- **It lives in `readings.json`**, not a second file and not the photo library: deleting the
+  reading has to delete its graph.
+- `exportText` carries the note (below) on the line it belongs to, so a shared reading is not
+  quieter than the app.
+- The fold on Measure is unchanged: its rows stay one line each, and it is a picker, not a viewer.
+
+### The band, under the reading
+
+- Each Readings row gains a **band** under its data: the whole run across the row's width, 44 pt
+  tall, on the same cut-corner panel as everything else, with a hairline through the middle.
+- Drawn exactly as the orb draws its trace, in the same per-mode height ramp (dark `#4A0709` ->
+  `#9E0F16` -> `#E11D25` -> `#FF5A4F`; light `#06262B` -> `#0B5F63` -> `#129C8E` -> `#4FE3C1`): one
+  1 pt core stroke over two narrow additive strokes (2.6 pt at 10%, 1.8 pt at 16%), butt caps,
+  clipped to the band. No grid, no sweep, no crest dots — at 44 pt the line is the reading.
+- **The band is its own target.** Tapping the row still stars it; tapping the band opens the
+  graph. One tap cannot mean both, so the band sits beside the row's own gesture rather than
+  inside it.
+- A reading with no stored graph shows no band, and nothing takes its place.
+
+### Expanded: the whole graph
+
+- Tapping the band opens the reading full screen: the background gradient, then the date, heart
+  rate, blood-pressure text and the note if it has one, then the graph.
+- The graph is drawn at **60 pt per second of the run** (15 s is 900 pt, about three phone widths),
+  so a single beat is legible, inside a scroller that moves horizontally, and takes the middle 40%
+  of the screen. Nothing overlaps the header.
+- **Two fingers pinch to zoom** (0.5x...8x on the graph's own width; the scroll position is kept
+  where it was, proportionally), **one finger scrolls it**, and **a tap anywhere dismisses**.
+- **A Done control also closes it.** A tap-to-dismiss surface cannot be the only way out: VoiceOver
+  and anyone who does not find the tap need a control that says what it does.
+- No animation of its own: the expanded view adds no transition, so there is nothing for Reduce
+  Motion to suppress, and the way it opens is the platform's own presentation.
+
+### A swinging rhythm is a note, not a refusal
+
+- **Both rhythm rejections are gone.** `HeartRate.estimate` no longer refuses a window because too
+  small a share of intervals stayed in band (`minAcceptedShare`), nor because the two halves'
+  medians drifted apart (`maxHalfDrift`). A rate that swings mid-scan is measured and reported
+  instead. `ScanFailure.unstable` and `HeartRateFailure.unstable` no longer exist.
+- **The running-median outlier drop is gone too** (`maxDeviationFromRunning`, 30%). It is a timing
+  rule, and it is what threw away ectopic beats — the beats the note exists for.
+- What is still dropped, and why none of it is a timing judgement:
+  - **Intervals outside 0.25...2.0 s** (30...240 bpm; widened from 0.33...1.5 s, 40...180 bpm).
+    Outside that is a dropout or one beat counted twice, not a heartbeat. This is the "correct
+    ranges" the change was given room for.
+  - **Beats whose amplitude is outside 0.5...2.0x the window's median**: the detector's confidence
+    in the beat, not its timing.
+  - **Fewer than 8 accepted intervals**: not enough beats to take a median of. A count, not a
+    duration.
+- **`Rhythm`** (`steady` / `irregular`), on the estimate, the result and the reading, is the
+  interval spread — standard deviation over the mean, the same statistic the estimator already
+  carries as `intervalCV`. **`irregular` at 0.10 and above**: ordinary respiratory variation sits
+  near 0.03 and stays steady, and a rhythm that genuinely swings is well past it. One constant,
+  `HeartRate.irregularVariation`, the same number on both platforms.
+- **The note.** A reading carries **"Low quality or arrhythmia"** when its level is `poor` or its
+  rhythm is `irregular` — `Reading.note`, from `ReadingNote.lowQualityOrArrhythmia`. One phrase
+  covers both because the numbers cannot tell them apart and the app does not pretend otherwise: a
+  weak signal and a swinging rhythm come out of the same three indices. It shows on the Readings
+  row, in the expanded graph's header, and in `exportText`.
+- **The quality gate no longer refuses a reading for shape.** `level == .poor` used to be a
+  failure; it is now the note. The one quality failure left is the **perfusion index below
+  `SignalQuality.minPerfusionIndex`** — a pulse that never rises above the light level, which is a
+  finger problem (too light, too heavy, off the lens) and not something a number can come from.
+- **Every rejection left is the finger's**: `notCovered` (no covered run), `tooShort` (under 8 s of
+  cover — a scan cut off, not a rhythm), `noPulse` (fewer than 8 beats to measure), `poorSignal`
+  (the perfusion floor). Nothing else refuses a reading.
+- **Help copy follows on both platforms.** The beat paragraph: intervals outside what a fingertip
+  can show are dropped and the rate is the median of the rest, so a missed or extra beat cannot
+  swing it. The quality card: a pulse too weak to read is an error, and anything else is kept, with
+  a rhythm that swings noted on the reading rather than thrown away.
+
+### Tests
+
+- `ReadingLogTests`: a reading keeps its graph through the file; a reading with no graph reads as
+  one with none; the note is present for a poor level and for an irregular rhythm and absent
+  otherwise; `exportText` carries it.
+- `CoreTests`: a drifting rhythm (0.6 s then 1.0 s intervals) is now a **success** with
+  `rhythm == .irregular` rather than a failure; a steady train is `.steady`; the widened range
+  accepts an interval of 0.3 s (200 bpm) and still refuses one of 0.2 s (300 bpm); a noisy scan is
+  **never silently dropped** — `ScanSession.analyse` returns either a failure carrying a message or
+  a reading marked `poor`, and `testANoisyScanIsEitherAnErrorOrAMarkedReading` pins exactly that
+  either-or. Of the four refusals left, `notCovered` and `tooShort` each have a test of their own
+  (`testUncoveredIsAnError`, `testTooShortIsAnError`); `noPulse` and `poorSignal` do not.
+  `poorSignal` is the perfusion floor, `SignalQuality.minPerfusionIndex` = 0.05 % of the window's
+  DC — a value from the first commit, below what a fingertip produces, so it fires on a window with
+  no readable pulse in it rather than on a weak one.
+- What was driven, and what was not. On the Android emulator, through its own UI: the band under a
+  reading, the note, the band opening the graph, a drag scrolling it, a tap dismissing it. On the
+  iOS simulator, seeded readings photographed: the band, the note line, and a reading with no graph
+  showing no band. **Not driven anywhere**: pinch, on either platform (neither `simctl` nor `adb`
+  injects a second finger here), and the iOS tap or drag (the simulator cannot be tapped from a
+  script on this machine). The iOS full-screen graph was photographed through a temporary local
+  harness that opened it without a tap; that harness was reverted before the commit.
+
 ## Android build (branch `android`)
 
 Native Kotlin, Jetpack Compose and CameraX under `android/`; same design, theme, copy and numbers as the iOS build.

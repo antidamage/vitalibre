@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import nz.skull.vitalibre.core.BPRange
 import nz.skull.vitalibre.core.QualityLevel
+import nz.skull.vitalibre.core.ReadingNote
+import nz.skull.vitalibre.core.Rhythm
 import nz.skull.vitalibre.core.ScanResult
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,11 +28,19 @@ data class Reading(
     val duration: Double,
     val modelVersion: String,
     val starred: Boolean = false,
+    /** The scan's filtered waveform, normalised -1..1 at the analysis rate, rounded to three decimals — the graph the reading keeps. Absent in a file written before graphs were kept, and then the reading simply has no graph. */
+    val trace: List<Double>? = null,
+    /** How evenly the beats came. Absent in a file written before the rhythm was kept, and `steady` is the honest reading of one: every reading in such a file passed the stability test that was in place then. */
+    val rhythm: Rhythm? = null,
     /** Kept, i.e. listed in Readings. A reading taken today and not kept lives in the day's log on Measure only. */
     val saved: Boolean = true,
     /** The scan this reading came from, which is what stops one scan being filed twice. Absent in a file written before the log existed. */
     val scanId: String? = null,
-)
+) {
+    /** The one note a reading can carry, or nothing. Marked, not refused: the reading is the user's either way. */
+    val note: String?
+        get() = if (level == QualityLevel.POOR || rhythm == Rhythm.IRREGULAR) ReadingNote.LOW_QUALITY_OR_ARRHYTHMIA else null
+}
 
 /**
  * The user's own readings, one JSON file in app-private storage. Never read by anything but this app, never transmitted.
@@ -58,6 +68,8 @@ class ReadingStore(context: Context) {
                     quality = o.getDouble("q"), level = QualityLevel.valueOf(o.getString("level")), duration = o.getDouble("dur"),
                     modelVersion = o.getString("model"), starred = o.optBoolean("star", false), saved = o.optBoolean("saved", true),
                     scanId = o.optString("scan").ifBlank { null },
+                    trace = o.optJSONArray("trace")?.let { a -> (0 until a.length()).map { a.getDouble(it) } },
+                    rhythm = o.optString("rhythm").ifBlank { null }?.let { Rhythm.valueOf(it) },
                 )
             }.sortedByDescending { it.epochMillis }
         } catch (e: Exception) {
@@ -79,6 +91,8 @@ class ReadingStore(context: Context) {
             // Written only when the reading has one, so a file written before the day's log existed
             // still reads on a build that has it and the other way round.
             r.scanId?.let { o.put("scan", it) }
+            r.trace?.let { t -> o.put("trace", JSONArray().apply { t.forEach { v -> put(v) } }) }
+            r.rhythm?.let { o.put("rhythm", it.name) }
             arr.put(o)
         }
         val tmp = File(file.parentFile, "readings.json.tmp")
@@ -115,6 +129,7 @@ class ReadingStore(context: Context) {
         if (existing != null) {
             val refreshed = existing.copy(
                 heartRate = result.heartRate, bp = result.bp, quality = result.quality, level = result.level,
+                rhythm = result.rhythm,
             )
             readings = readings.map { if (it.id == existing.id) refreshed else it }
             save()
@@ -123,11 +138,19 @@ class ReadingStore(context: Context) {
         val r = Reading(
             epochMillis = System.currentTimeMillis(), heartRate = result.heartRate, bp = result.bp, quality = result.quality,
             level = result.level, duration = result.duration, modelVersion = result.modelVersion, saved = false, scanId = scanId,
+            trace = stored(result.trace), rhythm = result.rhythm,
         )
         readings = listOf(r) + readings
         save()
         return r
     }
+
+    /**
+     * The graph as it is kept: three decimals, which is finer than a phone screen can show and about
+     * half the JSON of the raw doubles (a 15 s run is some 6 KB rather than 12). The rate is not
+     * reduced: the expanded view's zoom has to show what arrived.
+     */
+    private fun stored(trace: DoubleArray): List<Double> = trace.map { Math.round(it * 1000) / 1000.0 }
 
     fun setSaved(id: String?, saved: Boolean) {
         if (id == null) return
@@ -160,7 +183,14 @@ class ReadingStore(context: Context) {
             "",
         )
         for (r in kept) {
-            lines.add("${stamp.format(Date(r.epochMillis))}  HR ${Math.round(r.heartRate)}  BP ${r.bp.text}  quality ${r.level.label}${if (r.starred) "  starred" else ""}")
+            // The note travels with the reading: a shared line that dropped it would be quieter than
+            // the app, and the caveat is the part that matters.
+            val line = buildString {
+                append("${stamp.format(Date(r.epochMillis))}  HR ${Math.round(r.heartRate)}  BP ${r.bp.text}  quality ${r.level.label}")
+                r.note?.let { append("  $it") }
+                if (r.starred) append("  starred")
+            }
+            lines.add(line)
         }
         return lines.joinToString("\n")
     }

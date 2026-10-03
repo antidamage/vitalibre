@@ -1,5 +1,13 @@
 import Foundation
 
+/// What a kept reading can be marked with. One phrase covers both causes, in the owner's
+/// words (Adeline, 2026-10-04: "mark the reading as 'low quality or arrhythmia'"): the
+/// numbers cannot tell a weak signal from an unsteady rhythm, so the app says both and
+/// diagnoses neither.
+enum ReadingNote {
+    static let lowQualityOrArrhythmia = "Low quality or arrhythmia"
+}
+
 /// One reading: what the technique measured, plus what the user has since done
 /// with it. A value type with no file and no view, so the rules that decide what
 /// is kept and what is dropped can be tested without a simulator.
@@ -13,6 +21,14 @@ struct Reading: Identifiable, Codable, Equatable {
     var duration: Double
     var modelVersion: String
     var starred = false
+    /// The scan's filtered waveform, normalised -1...1 at the analysis rate, rounded to
+    /// three decimals — the graph the reading keeps. Optional so a reading filed before
+    /// this existed decodes with none, and such a reading simply has no graph.
+    var trace: [Double]? = nil
+    /// How evenly the beats came. Optional for the same reason as `saved`, and `steady` is
+    /// the honest reading of an older file: every reading in one passed the stability test
+    /// that was in place then.
+    var rhythm: Rhythm? = nil
     /// Kept, i.e. listed in Readings. A reading taken today and not kept lives in
     /// the day's log on Measure only. Optional so a file written before the log
     /// existed still decodes: nothing in such a file was ever dropped, so a
@@ -24,6 +40,13 @@ struct Reading: Identifiable, Codable, Equatable {
     var scanID: UUID? = nil
 
     var isSaved: Bool { saved ?? true }
+
+    /// Whether the rhythm swung during the scan.
+    var isIrregular: Bool { rhythm == .irregular }
+
+    /// The one note a reading can carry, or nothing. Marked, not refused: the reading is
+    /// the user's either way.
+    var note: String? { (level == .poor || isIrregular) ? ReadingNote.lowQualityOrArrhythmia : nil }
 }
 
 /// The user's readings, newest first, and the rules a finished scan runs into.
@@ -69,13 +92,22 @@ struct ReadingLog: Equatable {
             readings[i].bp = result.bp
             readings[i].quality = result.quality
             readings[i].level = result.level
+            readings[i].rhythm = result.rhythm
             return readings[i]
         }
         let r = Reading(date: date, heartRate: result.heartRate, bp: result.bp, quality: result.quality,
                         level: result.level, duration: result.duration, modelVersion: result.modelVersion,
+                        trace: Self.stored(result.trace), rhythm: result.rhythm,
                         saved: false, scanID: scanID)
         readings.insert(r, at: 0)
         return r
+    }
+
+    /// The graph as it is kept: three decimals, which is finer than a phone screen can
+    /// show and about half the JSON of the raw doubles (a 15 s run is some 6 KB rather than
+    /// 12). The rate is not reduced: the expanded view's zoom has to show what arrived.
+    static func stored(_ trace: [Double]) -> [Double] {
+        trace.map { ($0 * 1000).rounded() / 1000 }
     }
 
     mutating func setSaved(_ id: UUID?, _ saved: Bool) {
@@ -126,7 +158,12 @@ struct ReadingLog: Equatable {
         var lines = ["VitaLibre readings (\(kept.count))",
                      "Heart rate in bpm; blood pressure in mmHg. Values are estimates. Not a medical device.", ""]
         for r in kept {
-            lines.append("\(stamp.string(from: r.date))  HR \(Int(r.heartRate.rounded()))  BP \(r.bp.text)  quality \(r.level.rawValue)\(r.starred ? "  starred" : "")")
+            // The note travels with the reading: a shared line that dropped it would be
+            // quieter than the app, and the caveat is the part that matters.
+            var line = "\(stamp.string(from: r.date))  HR \(Int(r.heartRate.rounded()))  BP \(r.bp.text)  quality \(r.level.rawValue)"
+            if let note = r.note { line += "  \(note)" }
+            if r.starred { line += "  starred" }
+            lines.append(line)
         }
         return lines.joined(separator: "\n")
     }

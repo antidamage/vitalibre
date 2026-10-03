@@ -12,11 +12,14 @@ struct PPGSample: Equatable {
     var covered: Bool { r >= 80 && g <= 0.7 * r && saturated < 0.85 }
 }
 
+/// Why a scan produced no reading. Every one of these is the finger: not on the lens,
+/// taken off it too early, moving enough that no beat can be found, or pressed so that the
+/// pulse never rises above the light level. A rhythm that swings is not on this list — it
+/// is a note on the reading instead (`Reading.note`).
 enum ScanFailure: Error, Equatable {
     case notCovered
     case tooShort(seconds: Double)
     case noPulse
-    case unstable
     case poorSignal
 
     var message: String {
@@ -24,7 +27,6 @@ enum ScanFailure: Error, Equatable {
         case .notCovered: return "Cover the lens and flash with your fingertip, then try again."
         case .tooShort: return "The scan was too short. Keep your finger still until it finishes."
         case .noPulse: return "No pulse found. Rest your fingertip lightly and try again."
-        case .unstable: return "The rhythm moved too much during the scan. Keep still and try again."
         case .poorSignal: return "The signal was too weak to trust. Warm your hands and try again."
         }
     }
@@ -49,6 +51,9 @@ struct ScanResult: Equatable {
     var bp: BPRange
     var quality: Double
     var level: QualityLevel
+    /// How evenly the beats came. Carried onto the reading as a note when irregular; it
+    /// never refuses a scan.
+    var rhythm: Rhythm
     var duration: Double
     var intervals: [Double]
     var modelVersion: String
@@ -169,7 +174,10 @@ struct ScanSession {
         let bpm = 60 / Stats.median(recent)
         view.heartRate = bpm
         if intervals.count >= 5 {
-            let hr = HeartRateEstimate(bpm: bpm, intervals: recent, acceptedBeats: recent.count + 1)
+            let spread = Stats.std(recent) / max(1e-9, Stats.mean(recent))
+            let hr = HeartRateEstimate(bpm: bpm, intervals: recent, acceptedBeats: recent.count + 1,
+                                       variation: spread,
+                                       rhythm: spread >= HeartRate.irregularVariation ? .irregular : .steady)
             let f = BPEstimator.features(filtered: w.filtered, beats: beats, hr: hr, fs: fs)
             view.bp = BPEstimator.estimate(f, model: model, age: age, sex: sex, usual: usual, calibration: calibration)
         }
@@ -184,16 +192,21 @@ struct ScanSession {
         let fs = Self.analysisRate
         let beats = BeatDetector.detect(w.filtered, fs: fs)
         switch HeartRate.estimate(beats: beats) {
-        case .failure(.unstable): return .failure(.unstable)
-        case .failure(.tooFewBeats): return .failure(.noPulse)
+        case .failure: return .failure(.noPulse)
         case .success(let hr):
             let q = SignalQuality.measure(filtered: w.filtered, raw: w.raw, beats: beats, fs: fs)
-            guard q.level != .poor else { return .failure(.poorSignal) }
+            // The one quality failure left: a pulse that never rises above the light level.
+            // There is nothing in that to read a rate from, and it is a finger problem — too
+            // light, too heavy, off the lens. A merely poor shape is kept and noted instead
+            // (`Reading.note`); refusing it was how a recording that might hold an
+            // arrhythmia got thrown away, because a weak signal and an unsteady rhythm come
+            // out of the same three indices and the app does not pretend to tell them apart.
+            guard q.perfusionIndex >= SignalQuality.minPerfusionIndex else { return .failure(.poorSignal) }
             let feats = BPEstimator.features(filtered: w.filtered, beats: beats, hr: hr, fs: fs)
             let raw = BPEstimator.raw(feats, model: model, age: age, sex: sex, usual: usual)
             return .success(ScanResult(heartRate: hr.bpm,
                                        bp: BPEstimator.estimate(feats, model: model, age: age, sex: sex, usual: usual, calibration: calibration),
-                                       quality: q.score, level: q.level, duration: run.duration,
+                                       quality: q.score, level: q.level, rhythm: hr.rhythm, duration: run.duration,
                                        intervals: hr.intervals, modelVersion: model.version, features: feats,
                                        rawSystolic: raw.systolic, rawDiastolic: raw.diastolic,
                                        baseSystolic: BPEstimator.baseline(model: model, age: age, sex: sex, usual: usual).systolic,

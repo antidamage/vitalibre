@@ -31,10 +31,11 @@ struct HelpView: View {
                     text("Each time your heart beats, a little more blood fills the fingertip. Blood absorbs green light, so the fingertip lets through very slightly less green on every beat.")
                     text("With your finger over the rear camera, the app averages the green channel of a square in the middle of every frame. That gives one number per frame. The pulse is only about 1% of that number, so most of the work is recovering it.")
                     text("The signal is resampled to an even rate and band-passed between 0.5 and 5 Hz forwards and backwards, which removes slow drift and fast noise without shifting the beats in time.")
-                    text("Beats are found with a two-moving-average detector (Elgendi 2013). Intervals that are physically implausible, or far from their neighbours, are thrown away. Heart rate is the median of what is left.")
+                    text("Beats are found with a two-moving-average detector (Elgendi 2013). Intervals outside the range a fingertip can show — 30 to 240 beats a minute — are thrown away, and the rate is the median of the rest, so a missed beat or an extra one cannot swing it.")
                 }
-                SectionPanel(title: "The quality gate", symbol: "checkmark.seal") {
-                    text("Each scan is scored on the shape of the pulse (skewness), on how closely every beat matches the average beat, and on the strength of the pulse compared with the light level. If the score is too low, the app reports an error instead of a value.")
+                SectionPanel(title: "Quality, and a rhythm that swings", symbol: "checkmark.seal") {
+                    text("Each scan is scored on the shape of the pulse (skewness), on how closely every beat matches the average beat, and on the strength of the pulse compared with the light level. A pulse too weak to read is reported as an error instead of a value; anything else is kept.")
+                    text("A rhythm that comes unevenly is noted on the reading — low quality or arrhythmia — rather than thrown away. A camera cannot tell a poor signal from an irregular rhythm, and the app does not try to diagnose either. That note is what it is: a reason to treat the numbers on that reading with more caution.")
                 }
                 SectionPanel(title: "Blood pressure", symbol: "drop") {
                     text("The blood pressure figure is an estimate derived from pulse-shape features. Before calibration it is shown as a range; after calibration, as a single figure for each component. A camera cannot measure blood pressure on its own. Without calibration, version 1 starts from typical values for your age and sex and adjusts them by a small, capped amount. It has not been clinically validated.")

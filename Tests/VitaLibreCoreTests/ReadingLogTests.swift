@@ -4,16 +4,23 @@ import XCTest
 /// What a finished scan does to the day's log. This is the part of the fold that
 /// must never file one scan twice and never drop a reading the user kept.
 final class ReadingLogTests: XCTestCase {
-    private func scan(heartRate: Double = 72) -> ScanResult {
+    private func scan(heartRate: Double = 72, level: QualityLevel = .good, rhythm: Rhythm = .steady) -> ScanResult {
         ScanResult(
             heartRate: heartRate,
             bp: BPRange(systolicLow: 105, systolicHigh: 125, diastolicLow: 65, diastolicHigh: 80,
                         systolic: 115, diastolic: 72, calibrated: true),
-            quality: 0.8, level: .good, duration: 15, intervals: [0.83, 0.84], modelVersion: "test",
+            quality: 0.8, level: level, rhythm: rhythm, duration: 15, intervals: [0.83, 0.84], modelVersion: "test",
             features: BPFeatures(heartRate: heartRate, intervalCV: 0.05, crestFraction: 0.2,
                                  skewness: 0.1, reflectionIndex: 0.3),
             rawSystolic: 118, rawDiastolic: 74, baseSystolic: 120, baseDiastolic: 78,
             trace: [0, 0.5, 0], traceEnd: 15)
+    }
+
+    private func reading(level: QualityLevel, rhythm: Rhythm) -> Reading {
+        Reading(date: Date(), heartRate: 72,
+                bp: BPRange(systolicLow: 105, systolicHigh: 125, diastolicLow: 65, diastolicHigh: 80,
+                            systolic: 115, diastolic: 72, calibrated: true),
+                quality: 0.5, level: level, duration: 15, modelVersion: "test", rhythm: rhythm)
     }
 
     /// The scan's identity used to live in the measure screen's own state, so coming
@@ -99,5 +106,57 @@ final class ReadingLogTests: XCTestCase {
         let reloaded = ReadingLog.decoded(from: data)
         XCTAssertEqual(reloaded.readings.count, 1)
         XCTAssertEqual(reloaded.reading(forScan: scanID)?.id, filed.id)
+    }
+
+    /// The run's graph travels with the reading that was taken from it.
+    func testTheGraphIsKeptWithTheReading() {
+        var log = ReadingLog()
+        let filed = log.file(scan(), scanID: UUID())
+        XCTAssertEqual(filed.trace, [0, 0.5, 0])
+    }
+
+    func testTheGraphIsKeptAtThreeDecimals() {
+        XCTAssertEqual(ReadingLog.stored([0.123456, -0.987654, 1, -1]), [0.123, -0.988, 1, -1])
+    }
+
+    func testTheGraphSurvivesTheFile() {
+        var log = ReadingLog()
+        log.file(scan(), scanID: UUID())
+        guard let data = log.encoded() else { return XCTFail("the log did not encode") }
+        XCTAssertEqual(ReadingLog.decoded(from: data).readings.first?.trace, [0, 0.5, 0])
+    }
+
+    /// A reading filed before graphs were kept has none, and having none is not an error:
+    /// it simply has no band to show.
+    func testAReadingWithNoGraphReadsAsOneWithNone() {
+        let json = """
+        [{"id":"6B0E3F1E-0F1A-4E3B-9E6A-2A1B7C4D5E6F","date":"2026-10-01T20:15:00Z","heartRate":71,
+          "bp":{"systolicLow":104,"systolicHigh":124,"diastolicLow":64,"diastolicHigh":79,
+                "systolic":114,"diastolic":71,"calibrated":true},
+          "quality":0.7,"level":"fair","duration":15,"modelVersion":"v1","starred":true}]
+        """
+        let log = ReadingLog.decoded(from: Data(json.utf8))
+        XCTAssertNil(log.readings.first?.trace)
+        XCTAssertNil(log.readings.first?.rhythm)
+        XCTAssertNil(log.readings.first?.note)
+    }
+
+    /// One phrase, two causes, and neither of them a diagnosis.
+    func testTheNoteIsForAPoorLevelOrASwingingRhythm() {
+        XCTAssertNil(reading(level: .good, rhythm: .steady).note)
+        XCTAssertNil(reading(level: .fair, rhythm: .steady).note)
+        XCTAssertEqual(reading(level: .poor, rhythm: .steady).note, ReadingNote.lowQualityOrArrhythmia)
+        XCTAssertEqual(reading(level: .fair, rhythm: .irregular).note, ReadingNote.lowQualityOrArrhythmia)
+        XCTAssertEqual(reading(level: .good, rhythm: .irregular).note, ReadingNote.lowQualityOrArrhythmia)
+    }
+
+    /// A shared reading is not quieter than the app: the caveat goes with it.
+    func testTheNoteTravelsInTheExportedText() {
+        var log = ReadingLog()
+        let marked = log.file(scan(level: .poor), scanID: UUID())
+        log.setSaved(marked.id, true)
+        XCTAssertTrue(log.exportText().contains(ReadingNote.lowQualityOrArrhythmia))
+        XCTAssertFalse(ReadingLog([reading(level: .good, rhythm: .steady)]).exportText()
+            .contains(ReadingNote.lowQualityOrArrhythmia))
     }
 }

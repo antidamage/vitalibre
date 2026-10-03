@@ -27,6 +27,26 @@ struct SeededRNG {
     }
 }
 
+/// The same pulse shape as `syntheticSamples`, but the beats come unevenly: each one lands
+/// `intervals[i]` seconds after the last. Used to check what the app does with a rhythm that
+/// swings, which is the case a camera cannot measure without seeing the swing.
+func arrhythmicSamples(intervals: [Double], fps: Double = 30, noise: Double = 0.15, seed: UInt64 = 11) -> [PPGSample] {
+    var rng = SeededRNG(seed: seed)
+    var times: [Double] = [0]
+    for dt in intervals { times.append(times[times.count - 1] + dt) }
+    return (0..<Int((times[times.count - 1] + 1) * fps)).map { i in
+        let t = Double(i) / fps
+        var pulse = 0.0
+        for beat in times {
+            let u = t - beat
+            guard u > 0, u < 0.6 else { continue }
+            pulse += exp(-pow((u - 0.18) / 0.07, 2)) + 0.35 * exp(-pow((u - 0.45) / 0.09, 2))
+        }
+        let g = 60 - 1.2 * pulse + 0.4 * sin(t * 0.2) + noise * (rng.next() - 0.5)
+        return PPGSample(t: t, r: 210, g: g, b: 20, saturated: 0.1)
+    }
+}
+
 func testModel() -> BPModel {
     BPModel(version: "test", validated: false, baseSystolic: 120, baseDiastolic: 78,
             ageSystolicPerYear: 0.5, ageDiastolicPerYear: 0.15, referenceAge: 30,
@@ -128,18 +148,47 @@ final class DetectorTests: XCTestCase {
     }
 
     func testIntervalsOutsideBandDropped() {
-        // Beats every 0.2 s (300 bpm): every interval is below 0.33 s.
+        // Beats every 0.2 s (300 bpm): every interval is below 0.25 s.
         let beats = (0..<30).map { Beat(index: $0, time: Double($0) * 0.2, amplitude: 1) }
         if case .success = HeartRate.estimate(beats: beats) { XCTFail("accepted 300 bpm") }
     }
 
-    func testDriftingRhythmRejected() {
+    /// 0.3 s intervals are 200 bpm: inside what a fingertip can show, outside the 40-180 the
+    /// first build accepted, so every one of them used to be dropped and the scan reported
+    /// nothing.
+    func testTheWidenedRangeKeepsAFastInterval() {
+        let beats = (0..<12).map { Beat(index: $0, time: Double($0) * 0.3, amplitude: 1) }
+        guard case .success(let hr) = HeartRate.estimate(beats: beats) else { return XCTFail("dropped a 200 bpm rhythm") }
+        XCTAssertEqual(hr.bpm, 200, accuracy: 1)
+        XCTAssertEqual(hr.rhythm, .steady)
+    }
+
+    /// A rate that halves half-way through the scan. The old build refused this as
+    /// `.unstable` — which is how a recording that might hold an arrhythmia was abandoned.
+    /// It is a reading now, and the swing is what it is marked with.
+    func testADriftingRhythmIsMarkedRatherThanRefused() {
         var t = 0.0
         let beats = (0..<24).map { i -> Beat in
             t += i < 12 ? 0.6 : 1.0
             return Beat(index: i, time: t, amplitude: 1)
         }
-        XCTAssertEqual(HeartRate.estimate(beats: beats), .failure(.unstable))
+        guard case .success(let hr) = HeartRate.estimate(beats: beats) else {
+            return XCTFail("refused a rhythm that swung")
+        }
+        XCTAssertEqual(hr.rhythm, .irregular)
+        XCTAssertGreaterThanOrEqual(hr.variation, HeartRate.irregularVariation)
+    }
+
+    /// Ordinary beat-to-beat jitter and ordinary respiratory variation are not a swing.
+    func testAStableRhythmIsNotMarked() {
+        var t = 0.0
+        let beats = (0..<20).map { i -> Beat in
+            t += 0.8 + (i % 3 == 0 ? 0.01 : (i % 3 == 1 ? -0.01 : 0))
+            return Beat(index: i, time: t, amplitude: 1)
+        }
+        guard case .success(let hr) = HeartRate.estimate(beats: beats) else { return XCTFail() }
+        XCTAssertEqual(hr.rhythm, .steady)
+        XCTAssertEqual(hr.bpm, 75, accuracy: 1.5)
     }
 
     func testOutlierAmplitudeDropped() {
@@ -172,9 +221,27 @@ final class SessionTests: XCTestCase {
         guard case .failure(.tooShort) = run(syntheticSamples(bpm: 72, seconds: 5)) else { return XCTFail() }
     }
 
-    func testNoiseOnlyIsNeverANumber() {
+    /// Noise with no pulse shape in it is never an unmarked number. It used to be refused
+    /// outright, because a poor shape score was a failure; a kept one now carries the note,
+    /// which is the warning the refusal used to be.
+    func testANoisyScanIsEitherAnErrorOrAMarkedReading() {
         let s = syntheticSamples(bpm: 72, seconds: 16, noise: 40)
-        if case .success(let r) = run(s) { XCTAssertNotEqual(r.level, .poor); XCTAssertEqual(r.heartRate, 72, accuracy: 6) }
+        switch run(s) {
+        case .failure(let f): XCTAssertFalse(f.message.isEmpty)
+        case .success(let r): XCTAssertEqual(r.level, .poor, "a kept noisy scan is a poor one")
+        }
+    }
+
+    /// The point of the change at scan level: a rhythm that swings comes back as a reading
+    /// marked irregular, not as a refusal.
+    func testAnIrregularScanIsKeepableAndMarked() {
+        let intervals = (0..<20).map { $0 % 2 == 0 ? 0.62 : 1.05 }
+        guard case .success(let r) = run(arrhythmicSamples(intervals: intervals)) else {
+            return XCTFail("abandoned a recording with an irregular rhythm")
+        }
+        XCTAssertEqual(r.rhythm, .irregular)
+        XCTAssertGreaterThan(r.heartRate, 30)
+        XCTAssertLessThan(r.heartRate, 240)
     }
 
     func testFinishesAtTarget() {

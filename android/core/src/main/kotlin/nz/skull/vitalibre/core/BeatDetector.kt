@@ -58,10 +58,23 @@ object BeatDetector {
 
 sealed interface HeartRateFailure {
     data class TooFewBeats(val accepted: Int) : HeartRateFailure
-    data object Unstable : HeartRateFailure
 }
 
-class HeartRateEstimate(val bpm: Double, val intervals: DoubleArray, val acceptedBeats: Int)
+/**
+ * How evenly the beats came. A note about a reading, never a verdict on it: a rhythm that swings is
+ * reported, not refused. A finger camera cannot tell an irregular rhythm from a poor signal, and it
+ * does not try to diagnose either.
+ */
+enum class Rhythm { STEADY, IRREGULAR }
+
+class HeartRateEstimate(
+    val bpm: Double,
+    val intervals: DoubleArray,
+    val acceptedBeats: Int,
+    /** Standard deviation over the mean of the accepted intervals: the same spread the estimator carries as `intervalCV`. */
+    val variation: Double,
+    val rhythm: Rhythm,
+)
 
 sealed interface HeartRateResult {
     data class Ok(val estimate: HeartRateEstimate) : HeartRateResult
@@ -69,37 +82,40 @@ sealed interface HeartRateResult {
 }
 
 object HeartRate {
-    const val MIN_INTERVAL = 0.33
-    const val MAX_INTERVAL = 1.5
-    const val MAX_DEVIATION_FROM_RUNNING = 0.30
+    /** The range a fingertip can show: 30-240 bpm. Wider than the 40-180 the first build used, so a pause or a run of fast beats reads as a beat rather than as a dropout. */
+    const val MIN_INTERVAL = 0.25
+    const val MAX_INTERVAL = 2.0
     val amplitudeBand = 0.5..2.0
+
+    /** Enough beats to take a median of. A count, not a duration: how long the scan ran says nothing about whether the rate in it can be trusted. */
     const val MIN_ACCEPTED = 8
-    const val MIN_ACCEPTED_SHARE = 0.7
-    const val MAX_HALF_DRIFT = 0.15
+
+    /** The interval spread at which a rhythm is called irregular: about three times ordinary respiratory variation (near 0.03). */
+    const val IRREGULAR_VARIATION = 0.10
 
     fun estimate(beats: List<Beat>): HeartRateResult {
+        // Drop beats whose amplitude is far from the window's median: that is the detector's confidence
+        // in the beat, not its timing.
         val medAmp = Stats.median(DoubleArray(beats.size) { beats[it].amplitude })
         val kept = beats.filter { medAmp > 0 && it.amplitude / medAmp in amplitudeBand }
         val accepted = mutableListOf<Double>()
-        var inBand = 0
         for (i in 1 until kept.size) {
             val dt = kept[i].time - kept[i - 1].time
             if (dt < MIN_INTERVAL || dt > MAX_INTERVAL) continue
-            inBand++
-            if (accepted.size >= 3) {
-                val running = Stats.median(accepted.takeLast(10).toDoubleArray())
-                if (abs(dt - running) / running > MAX_DEVIATION_FROM_RUNNING) continue
-            }
             accepted.add(dt)
         }
         if (accepted.size < MIN_ACCEPTED) return HeartRateResult.Fail(HeartRateFailure.TooFewBeats(accepted.size))
-        // A rate that shifted mid-scan looks like a run of outliers; refuse rather than report half the scan.
-        if (accepted.size < MIN_ACCEPTED_SHARE * inBand) return HeartRateResult.Fail(HeartRateFailure.Unstable)
-        val half = accepted.size / 2
-        val first = Stats.median(accepted.subList(0, half).toDoubleArray())
-        val second = Stats.median(accepted.subList(half, accepted.size).toDoubleArray())
-        if (abs(first - second) / max(first, second) > MAX_HALF_DRIFT) return HeartRateResult.Fail(HeartRateFailure.Unstable)
+        // Nothing from here on refuses a window for its rhythm, and nothing is dropped for sitting far
+        // from its neighbours. A rate that swings during the scan is measured: `variation` says by how
+        // much and `rhythm` whether it is worth a note. A recording that might hold an arrhythmia is a
+        // recording to keep and mark, not one to abandon.
         val arr = accepted.toDoubleArray()
-        return HeartRateResult.Ok(HeartRateEstimate(60 / Stats.median(arr), arr, accepted.size + 1))
+        val variation = Stats.std(arr) / max(1e-9, Stats.mean(arr))
+        return HeartRateResult.Ok(
+            HeartRateEstimate(
+                60 / Stats.median(arr), arr, accepted.size + 1, variation,
+                if (variation >= IRREGULAR_VARIATION) Rhythm.IRREGULAR else Rhythm.STEADY,
+            ),
+        )
     }
 }

@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
@@ -74,6 +76,7 @@ fun ReadingsScreen() {
     var starredOnly by remember { mutableStateOf(false) }
     val shown = if (starredOnly) store.savedReadings.filter { it.starred } else store.savedReadings
     val df = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+    var openGraph by remember { mutableStateOf<Reading?>(null) }
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -106,21 +109,35 @@ fun ReadingsScreen() {
                 SwipeToDismissBox(state, backgroundContent = {}, enableDismissFromStartToEnd = false) {
                     val shape = InstrumentShape()
                     Column(
-                        Modifier.fillMaxWidth().background(p.surface, shape).border(1.dp, p.edge, shape).clickable { store.toggleStar(r.id) }.padding(18.dp),
+                        Modifier.fillMaxWidth().background(p.surface, shape).border(1.dp, p.edge, shape).padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("${r.heartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(48.sp))
-                            Text("BPM", color = p.readoutSecondary, style = Fonts.chakra(11.sp, Fonts.Face.MEDIUM), modifier = Modifier.padding(bottom = 10.dp).weight(1f))
-                            Text(if (r.starred) "⭐" else "☆", color = p.led, fontSize = 20.sp)
+                        // Tap the reading to star it; the band below is its own target, because one tap
+                        // cannot both star a reading and open its graph.
+                        Column(Modifier.fillMaxWidth().clickable { store.toggleStar(r.id) }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("${r.heartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(48.sp))
+                                Text("BPM", color = p.readoutSecondary, style = Fonts.chakra(11.sp, Fonts.Face.MEDIUM), modifier = Modifier.padding(bottom = 10.dp).weight(1f))
+                                Text(if (r.starred) "⭐" else "☆", color = p.led, fontSize = 20.sp)
+                            }
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(p.line))
+                            DataRow(df.format(Date(r.epochMillis)), r.bp.text)
+                            // The mark a reading carries instead of being thrown away.
+                            r.note?.let { Text(it, color = p.led, style = Fonts.chakra(11.sp, Fonts.Face.MEDIUM)) }
                         }
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(p.line))
-                        DataRow(df.format(Date(r.epochMillis)), r.bp.text)
+                        r.trace?.takeIf { it.size > 3 }?.let { trace ->
+                            TraceBand(
+                                trace,
+                                Modifier.pressable({ Sounds.play(Sounds.CLICK); openGraph = r })
+                                    .semantics { contentDescription = "Heart rate graph for ${df.format(Date(r.epochMillis))}. Opens full screen." },
+                            )
+                        }
                     }
                 }
             }
         }
     }
+    openGraph?.let { ReadingGraphDialog(it) { openGraph = null } }
 }
 
 // ---------------------------------------------------------------------------------------------- Help
@@ -171,9 +188,12 @@ fun HelpScreen() {
             "Each time your heart beats, a little more blood fills the fingertip. Blood absorbs green light, so the fingertip lets through very slightly less green on every beat.",
             "With your finger over the rear camera and the flash on, the app averages the green channel of a square in the middle of every frame. That gives one number per frame. The pulse is only about 1% of that number, so most of the work is recovering it.",
             "The signal is resampled to an even rate and band-passed between 0.5 and 5 Hz forwards and backwards, which removes slow drift and fast noise without shifting the beats in time.",
-            "Beats are found with a two-moving-average detector (Elgendi 2013). Intervals that are physically implausible, or far from their neighbours, are thrown away. Heart rate is the median of what is left.",
+            "Beats are found with a two-moving-average detector (Elgendi 2013). Intervals outside the range a fingertip can show — 30 to 240 beats a minute — are thrown away, and the rate is the median of the rest, so a missed beat or an extra one cannot swing it.",
         ))
-        Card("The quality gate", listOf("Each scan is scored on the shape of the pulse (skewness), on how closely every beat matches the average beat, and on the strength of the pulse compared with the light level. If the score is too low, the app reports an error instead of a value."))
+        Card("Quality, and a rhythm that swings", listOf(
+            "Each scan is scored on the shape of the pulse (skewness), on how closely every beat matches the average beat, and on the strength of the pulse compared with the light level. A pulse too weak to read is reported as an error instead of a value; anything else is kept.",
+            "A rhythm that comes unevenly is noted on the reading — low quality or arrhythmia — rather than thrown away. A camera cannot tell a poor signal from an irregular rhythm, and the app does not try to diagnose either. That note is what it is: a reason to treat the numbers on that reading with more caution.",
+        ))
         Card("Blood pressure", listOf(
             "The blood pressure figure is an estimate derived from pulse-shape features. Before calibration it is shown as a range; after calibration, as a single figure for each component. A camera cannot measure blood pressure on its own. Without calibration, version 1 starts from typical values for your age and sex and adjusts them by a small, capped amount. It has not been clinically validated.",
             "For reference, published calibration-free camera methods have a typical error of about 13–16 mmHg systolic and 7–9 mmHg diastolic. That is two to three times worse than the ISO 81060-2 criterion (mean difference within 5 mmHg, standard deviation within 8 mmHg). Finger-camera heart rate is typically within about 2 beats per minute of an ECG at rest.",

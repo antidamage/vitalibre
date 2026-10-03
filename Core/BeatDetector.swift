@@ -51,46 +51,56 @@ enum BeatDetector {
 
 enum HeartRateFailure: Error, Equatable {
     case tooFewBeats(Int)
-    case unstable
 }
+
+/// How evenly the beats came. A note about a reading, never a verdict on it: a rhythm
+/// that swings is reported, not refused. A finger camera cannot tell an irregular rhythm
+/// from a poor signal, and it does not try to diagnose either.
+enum Rhythm: String, Codable, Equatable { case steady, irregular }
 
 struct HeartRateEstimate: Equatable {
     var bpm: Double
     var intervals: [Double]
     var acceptedBeats: Int
+    /// Standard deviation over the mean of the accepted intervals: the same spread the
+    /// blood-pressure estimator carries as `intervalCV`.
+    var variation: Double
+    var rhythm: Rhythm
 }
 
 enum HeartRate {
-    static let minInterval = 0.33, maxInterval = 1.5
-    static let maxDeviationFromRunning = 0.30
+    /// The range a fingertip can show: 30-240 bpm. Wider than the 40-180 the first build
+    /// used, so a pause or a run of fast beats reads as a beat rather than as a dropout.
+    static let minInterval = 0.25, maxInterval = 2.0
     static let amplitudeBand = 0.5...2.0
+    /// Enough beats to take a median of. A count, not a duration: how long the scan ran
+    /// says nothing about whether the rate in it can be trusted.
     static let minAccepted = 8
-    static let minAcceptedShare = 0.7
-    static let maxHalfDrift = 0.15
+    /// The interval spread at which a rhythm is called irregular: about three times
+    /// ordinary respiratory variation (near 0.03), and well short of what a rhythm that
+    /// genuinely swings gives.
+    static let irregularVariation = 0.10
 
     static func estimate(beats: [Beat]) -> Result<HeartRateEstimate, HeartRateFailure> {
-        // Drop beats whose amplitude is far from the window's median.
+        // Drop beats whose amplitude is far from the window's median: that is the
+        // detector's confidence in the beat, not its timing.
         let medAmp = Stats.median(beats.map(\.amplitude))
         let kept = beats.filter { medAmp > 0 && amplitudeBand.contains($0.amplitude / medAmp) }
         var accepted: [Double] = []
-        var inBand = 0
         for i in 1..<max(1, kept.count) {
             let dt = kept[i].time - kept[i - 1].time
             guard dt >= minInterval, dt <= maxInterval else { continue }
-            inBand += 1
-            if accepted.count >= 3 {
-                let running = Stats.median(Array(accepted.suffix(10)))
-                if abs(dt - running) / running > maxDeviationFromRunning { continue }
-            }
             accepted.append(dt)
         }
         guard accepted.count >= minAccepted else { return .failure(.tooFewBeats(accepted.count)) }
-        // A rate that shifted mid-scan looks like a run of outliers; refuse rather than report half the scan.
-        if Double(accepted.count) < minAcceptedShare * Double(inBand) { return .failure(.unstable) }
-        let half = accepted.count / 2
-        let first = Stats.median(Array(accepted[0..<half])), second = Stats.median(Array(accepted[half...]))
-        if abs(first - second) / max(first, second) > maxHalfDrift { return .failure(.unstable) }
+        // Nothing from here on refuses a window for its rhythm, and nothing is dropped for
+        // sitting far from its neighbours. A rate that swings during the scan is measured:
+        // `variation` says by how much and `rhythm` whether it is worth a note. That was
+        // the point of the change (Adeline, 2026-10-04): a recording that might hold an
+        // arrhythmia is a recording to keep and mark, not one to abandon.
+        let variation = Stats.std(accepted) / max(1e-9, Stats.mean(accepted))
         return .success(HeartRateEstimate(bpm: 60 / Stats.median(accepted), intervals: accepted,
-                                          acceptedBeats: accepted.count + 1))
+                                          acceptedBeats: accepted.count + 1, variation: variation,
+                                          rhythm: variation >= irregularVariation ? .irregular : .steady))
     }
 }

@@ -30,6 +30,27 @@ fun syntheticSamples(bpm: Double, seconds: Double, fps: Double = 30.0, noise: Do
     }
 }
 
+/**
+ * The same pulse shape as [syntheticSamples], but the beats come unevenly: each one lands
+ * `intervals[i]` seconds after the last. Used to check what the app does with a rhythm that swings,
+ * which is the case a camera cannot measure without seeing the swing.
+ */
+fun arrhythmicSamples(intervals: List<Double>, fps: Double = 30.0, noise: Double = 0.15): List<PPGSample> {
+    val rng = Random(11)
+    val times = mutableListOf(0.0)
+    for (dt in intervals) times.add(times.last() + dt)
+    return (0 until ((times.last() + 1) * fps).toInt()).map { i ->
+        val t = i / fps
+        var pulse = 0.0
+        for (beat in times) {
+            val u = t - beat
+            if (u <= 0 || u >= 0.6) continue
+            pulse += exp(-((u - 0.18) / 0.07).pow(2)) + 0.35 * exp(-((u - 0.45) / 0.09).pow(2))
+        }
+        PPGSample(t, 210.0, 60 - 1.2 * pulse + 0.4 * sin(t * 0.2) + noise * (rng.nextDouble() - 0.5), 20.0, 0.1)
+    }
+}
+
 fun testModel() = BPModel(
     "test", false, 120.0, 78.0, 0.5, 0.15, 30.0, 2.0, 1.0,
     listOf(BPTerm("heartRate", 70.0, 12.0, 100.0, 100.0)), 8.0, 5.0, 14.0, 9.0,
@@ -126,10 +147,33 @@ class DetectorTests {
         assertFalse(HeartRate.estimate(beats) is HeartRateResult.Ok, "accepted 300 bpm")
     }
 
-    @Test fun driftingRhythmRejected() {
+    /** 0.3 s intervals are 200 bpm: inside what a fingertip can show, outside the 40-180 the first build accepted. */
+    @Test fun widenedRangeKeepsAFastInterval() {
+        val beats = (0 until 12).map { Beat(it, it * 0.3, 1.0) }
+        val r = HeartRate.estimate(beats) as? HeartRateResult.Ok ?: fail("dropped a 200 bpm rhythm")
+        near(200.0, r.estimate.bpm, 1.0)
+        assertEquals(Rhythm.STEADY, r.estimate.rhythm)
+    }
+
+    /**
+     * A rate that halves half-way through the scan. The old build refused this as unstable — which is
+     * how a recording that might hold an arrhythmia was abandoned.
+     */
+    @Test fun driftingRhythmIsMarkedRatherThanRefused() {
         var t = 0.0
         val beats = (0 until 24).map { i -> t += if (i < 12) 0.6 else 1.0; Beat(i, t, 1.0) }
-        assertEquals(HeartRateResult.Fail(HeartRateFailure.Unstable), HeartRate.estimate(beats))
+        val r = HeartRate.estimate(beats) as? HeartRateResult.Ok ?: fail("refused a rhythm that swung")
+        assertEquals(Rhythm.IRREGULAR, r.estimate.rhythm)
+        assertTrue(r.estimate.variation >= HeartRate.IRREGULAR_VARIATION)
+    }
+
+    /** Ordinary beat-to-beat jitter and ordinary respiratory variation are not a swing. */
+    @Test fun stableRhythmIsNotMarked() {
+        var t = 0.0
+        val beats = (0 until 20).map { i -> t += 0.8 + if (i % 3 == 0) 0.01 else if (i % 3 == 1) -0.01 else 0.0; Beat(i, t, 1.0) }
+        val r = HeartRate.estimate(beats) as? HeartRateResult.Ok ?: fail("no estimate")
+        assertEquals(Rhythm.STEADY, r.estimate.rhythm)
+        near(75.0, r.estimate.bpm, 1.5)
     }
 
     @Test fun outlierAmplitudeDropped() {
@@ -159,6 +203,26 @@ class SessionTests {
 
     @Test fun tooShortIsAnError() {
         assertTrue((run(syntheticSamples(72.0, 5.0)) as? ScanOutcome.Failure)?.failure is ScanFailure.TooShort)
+    }
+
+    /**
+     * Noise with no pulse shape in it is never an unmarked number. It used to be refused outright,
+     * because a poor shape score was a failure; a kept one now carries the note, which is the warning
+     * the refusal used to be.
+     */
+    @Test fun noisyScanIsEitherAnErrorOrAMarkedReading() {
+        when (val outcome = run(syntheticSamples(72.0, 16.0, noise = 40.0))) {
+            is ScanOutcome.Failure -> assertTrue(outcome.failure.message.isNotEmpty())
+            is ScanOutcome.Success -> assertEquals(QualityLevel.POOR, outcome.result.level, "a kept noisy scan is a poor one")
+        }
+    }
+
+    /** The point of the change at scan level: a rhythm that swings comes back as a reading marked irregular, not as a refusal. */
+    @Test fun irregularScanIsKeepableAndMarked() {
+        val intervals = (0 until 20).map { if (it % 2 == 0) 0.62 else 1.05 }
+        val r = (run(arrhythmicSamples(intervals)) as? ScanOutcome.Success ?: fail("abandoned a recording with an irregular rhythm")).result
+        assertEquals(Rhythm.IRREGULAR, r.rhythm)
+        assertTrue(r.heartRate > 30 && r.heartRate < 240)
     }
 
     @Test fun finishesAtTarget() {

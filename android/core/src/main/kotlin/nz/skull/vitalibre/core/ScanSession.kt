@@ -14,6 +14,11 @@ data class PPGSample(
     val covered: Boolean get() = r >= 80 && g <= 0.7 * r && saturated < 0.85
 }
 
+/**
+ * Why a scan produced no reading. Every one of these is the finger: not on the lens, taken off it too
+ * early, moving enough that no beat can be found, or pressed so that the pulse never rises above the
+ * light level. A rhythm that swings is not on this list — it is a note on the reading instead.
+ */
 sealed interface ScanFailure {
     val message: String
 
@@ -27,10 +32,6 @@ sealed interface ScanFailure {
 
     data object NoPulse : ScanFailure {
         override val message = "No pulse found. Rest your fingertip lightly and try again."
-    }
-
-    data object Unstable : ScanFailure {
-        override val message = "The rhythm moved too much during the scan. Keep still and try again."
     }
 
     data object PoorSignal : ScanFailure {
@@ -51,6 +52,8 @@ class ScanResult(
     val bp: BPRange,
     val quality: Double,
     val level: QualityLevel,
+    /** How evenly the beats came. Carried onto the reading as a note when irregular; it never refuses a scan. */
+    val rhythm: Rhythm,
     val duration: Double,
     val intervals: DoubleArray,
     val modelVersion: String,
@@ -66,7 +69,7 @@ class ScanResult(
     /** Seconds from the run's start to the trace's last sample. */
     val traceEnd: Double,
 ) {
-    fun withBP(bp: BPRange) = ScanResult(heartRate, bp, quality, level, duration, intervals, modelVersion, features,
+    fun withBP(bp: BPRange) = ScanResult(heartRate, bp, quality, level, rhythm, duration, intervals, modelVersion, features,
         rawSystolic, rawDiastolic, baseSystolic, baseDiastolic, trace, traceEnd)
 }
 
@@ -180,7 +183,9 @@ class ScanSession(initial: List<PPGSample> = emptyList()) {
         val bpm = 60 / Stats.median(recent)
         var bp: BPRange? = null
         if (intervals.size >= 5) {
-            val hr = HeartRateEstimate(bpm, recent, recent.size + 1)
+            val spread = Stats.std(recent) / max(1e-9, Stats.mean(recent))
+            val hr = HeartRateEstimate(bpm, recent, recent.size + 1, spread,
+                if (spread >= HeartRate.IRREGULAR_VARIATION) Rhythm.IRREGULAR else Rhythm.STEADY)
             bp = BPEstimator.estimate(BPEstimator.features(w.filtered, beats, hr, fs), model, age, sex, usual, calibration)
         }
         return LiveView(trace, end, bpm, bp, lastBeat)
@@ -193,18 +198,21 @@ class ScanSession(initial: List<PPGSample> = emptyList()) {
         val fs = ANALYSIS_RATE
         val beats = BeatDetector.detect(w.filtered, fs)
         when (val hrResult = HeartRate.estimate(beats)) {
-            is HeartRateResult.Fail -> return ScanOutcome.Failure(
-                if (hrResult.failure is HeartRateFailure.Unstable) ScanFailure.Unstable else ScanFailure.NoPulse,
-            )
+            is HeartRateResult.Fail -> return ScanOutcome.Failure(ScanFailure.NoPulse)
             is HeartRateResult.Ok -> {
                 val hr = hrResult.estimate
                 val q = SignalQuality.measure(w.filtered, w.raw, beats, fs)
-                if (q.level == QualityLevel.POOR) return ScanOutcome.Failure(ScanFailure.PoorSignal)
+                // The one quality failure left: a pulse that never rises above the light level. There is
+                // nothing in that to read a rate from, and it is a finger problem — too light, too heavy,
+                // off the lens. A merely poor shape is kept and noted instead: refusing it was how a
+                // recording that might hold an arrhythmia got thrown away, because a weak signal and an
+                // unsteady rhythm come out of the same three indices.
+                if (q.perfusionIndex < SignalQuality.MIN_PERFUSION_INDEX) return ScanOutcome.Failure(ScanFailure.PoorSignal)
                 val feats = BPEstimator.features(w.filtered, beats, hr, fs)
                 val raw = BPEstimator.raw(feats, model, age, sex, usual)
                 return ScanOutcome.Success(
                     ScanResult(
-                        hr.bpm, BPEstimator.estimate(feats, model, age, sex, usual, calibration), q.score, q.level,
+                        hr.bpm, BPEstimator.estimate(feats, model, age, sex, usual, calibration), q.score, q.level, hr.rhythm,
                         run.duration, hr.intervals, model.version, feats, raw.first, raw.second,
                         BPEstimator.baseline(model, age, sex, usual).first, BPEstimator.baseline(model, age, sex, usual).second,
                         normalised(w.filtered), w.start + (w.filtered.size - 1) / fs,

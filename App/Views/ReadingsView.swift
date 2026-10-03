@@ -4,6 +4,8 @@ struct ReadingsView: View {
     @EnvironmentObject private var store: ReadingStore
     @Environment(\.palette) private var palette
     @State private var starredOnly = false
+    /// The reading whose graph is open, if one is.
+    @State private var openGraph: Reading?
 
     private var shown: [Reading] { starredOnly ? store.savedReadings.filter(\.starred) : store.savedReadings }
 
@@ -44,29 +46,54 @@ struct ReadingsView: View {
                 .scrollContentBackground(.hidden)
             }
         }
+        .fullScreenCover(item: $openGraph) { reading in
+            ReadingGraphView(reading: reading) { openGraph = nil }
+        }
     }
 
-    /// Tap a reading to star it; swipe to delete.
+    /// Tap the reading to star it, or its band to open the graph; swipe to delete.
+    ///
+    /// The band is its own button rather than part of the row's: one tap cannot both star a
+    /// reading and open its graph.
     private func row(_ r: Reading) -> some View {
-        Button {
-            store.toggleStar(r.id)
-        } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("\(Int(r.heartRate.rounded()))").font(.rajdhani(48)).monospacedDigit().foregroundStyle(palette.readout)
-                    Text("BPM").font(.chakra(11)).foregroundStyle(palette.readoutSecondary)
-                    Spacer()
-                    Image(systemName: r.starred ? "star.fill" : "star").foregroundStyle(r.starred ? palette.led : palette.readoutSecondary)
+        VStack(alignment: .leading, spacing: 14) {
+            Button {
+                store.toggleStar(r.id)
+            } label: {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(Int(r.heartRate.rounded()))").font(.rajdhani(48)).monospacedDigit().foregroundStyle(palette.readout)
+                        Text("BPM").font(.chakra(11)).foregroundStyle(palette.readoutSecondary)
+                        Spacer()
+                        Image(systemName: r.starred ? "star.fill" : "star").foregroundStyle(r.starred ? palette.led : palette.readoutSecondary)
+                    }
+                    Rectangle().fill(palette.line).frame(height: 1)
+                    DataRow(title: r.date.formatted(date: .abbreviated, time: .shortened), value: r.bp.text)
+                    // The mark a reading carries instead of being thrown away.
+                    if let note = r.note {
+                        Text(note).font(.chakra(11, .medium)).foregroundStyle(palette.led)
+                    }
                 }
-                Rectangle().fill(palette.line).frame(height: 1)
-                DataRow(title: r.date.formatted(date: .abbreviated, time: .shortened), value: r.bp.text)
+                .contentShape(Rectangle())
             }
-            .padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .background(palette.surface, in: CutCornerShape())
-            .overlay(CutCornerShape().stroke(palette.edge, lineWidth: 1))
+            .buttonStyle(PressStyle())
+            .accessibilityLabel("Heart rate \(Int(r.heartRate.rounded())), blood pressure estimate \(r.bp.text), \(r.starred ? "starred" : "not starred")\(r.note.map { ", \($0)" } ?? "")")
+            .accessibilityHint("Toggles the star")
+
+            if let trace = r.trace, trace.count > 3 {
+                Button {
+                    DialClick.shared.play()
+                    openGraph = r
+                } label: {
+                    TraceBand(trace: trace)
+                }
+                .buttonStyle(PressStyle())
+                .accessibilityLabel("Heart rate graph for \(r.date.formatted(date: .abbreviated, time: .shortened))")
+                .accessibilityHint("Opens the graph full screen")
+            }
         }
-        .buttonStyle(PressStyle())
-        .accessibilityLabel("Heart rate \(Int(r.heartRate.rounded())), blood pressure estimate \(r.bp.text), \(r.starred ? "starred" : "not starred")")
-        .accessibilityHint("Toggles the star")
+        .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.surface, in: CutCornerShape())
+        .overlay(CutCornerShape().stroke(palette.edge, lineWidth: 1))
     }
 }

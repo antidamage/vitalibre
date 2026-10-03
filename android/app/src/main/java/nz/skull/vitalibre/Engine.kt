@@ -10,6 +10,7 @@ import nz.skull.vitalibre.core.BPCalibration
 import nz.skull.vitalibre.core.BPModel
 import nz.skull.vitalibre.core.BPRange
 import nz.skull.vitalibre.core.Guidance
+import nz.skull.vitalibre.core.MotionSample
 import nz.skull.vitalibre.core.PPGSample
 import nz.skull.vitalibre.core.ScanOutcome
 import nz.skull.vitalibre.core.ScanSession
@@ -81,6 +82,9 @@ class ScanEngine(
 
     /** Called from the camera thread. */
     fun sample(s: PPGSample) { handler.post { receive(s) } }
+
+    /** Called from the motion sensor thread. */
+    fun motion(m: MotionSample) { handler.post { if (active) session.addMotion(m) } }
 
     private fun receive(s: PPGSample) {
         val cfg = config ?: return

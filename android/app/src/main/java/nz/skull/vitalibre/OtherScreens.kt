@@ -76,7 +76,7 @@ fun ReadingsScreen() {
     var starredOnly by remember { mutableStateOf(false) }
     val shown = if (starredOnly) store.savedReadings.filter { it.starred } else store.savedReadings
     val df = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
-    var openGraph by remember { mutableStateOf<Reading?>(null) }
+    var openGraph by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -87,6 +87,14 @@ fun ReadingsScreen() {
                 ) { Text(label, color = if (on) p.readout else p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM)) }
             }
             Box(Modifier.weight(1f))
+            val ctx = LocalContext.current
+            val appVersion = remember { ctx.packageManager.getPackageInfo(ctx.packageName, 0).let { "${it.versionName} (${it.longVersionCode})" } }
+            // The validation CSV: every cuff comparison and every reading's raw model values.
+            Box(Modifier.size(46.dp).console().pressable({ env.activity.shareText(store.validationCsv(env.prefs.calibration, appVersion)) },
+                enabled = store.savedReadings.isNotEmpty() || env.prefs.calibration.count > 0).semantics { contentDescription = "Export cuff comparisons and raw values as CSV" },
+                contentAlignment = Alignment.Center) {
+                Text("CSV", color = p.readoutSecondary, style = Fonts.chakra(12.sp, Fonts.Face.MEDIUM))
+            }
             Box(Modifier.size(46.dp).console().pressable({ env.activity.shareText(store.exportText()) }, enabled = store.savedReadings.isNotEmpty()), contentAlignment = Alignment.Center) {
                 Icon(Icons.Filled.Share, "Export all readings as text", tint = p.readoutSecondary, modifier = Modifier.size(20.dp))
             }
@@ -116,19 +124,19 @@ fun ReadingsScreen() {
                         // cannot both star a reading and open its graph.
                         Column(Modifier.fillMaxWidth().clickable { store.toggleStar(r.id) }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("${r.heartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(48.sp))
+                                Text("${r.displayHeartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(48.sp))
                                 Text("BPM", color = p.readoutSecondary, style = Fonts.chakra(11.sp, Fonts.Face.MEDIUM), modifier = Modifier.padding(bottom = 10.dp).weight(1f))
                                 Text(if (r.starred) "⭐" else "☆", color = p.led, fontSize = 20.sp)
                             }
                             Box(Modifier.fillMaxWidth().height(1.dp).background(p.line))
-                            DataRow(df.format(Date(r.epochMillis)), r.bp.text)
+                            DataRow(df.format(Date(r.epochMillis)), if (r.bpHidden == null) r.displayBP.text else "BP hidden")
                             // The mark a reading carries instead of being thrown away.
-                            r.note?.let { Text(it, color = p.led, style = Fonts.chakra(11.sp, Fonts.Face.MEDIUM)) }
+                            store.noteText(r)?.let { Text(it, color = p.led, style = Fonts.chakra(11.sp, Fonts.Face.MEDIUM)) }
                         }
                         r.trace?.takeIf { it.size > 3 }?.let { trace ->
                             TraceBand(
                                 trace,
-                                Modifier.pressable({ Sounds.play(Sounds.CLICK); openGraph = r })
+                                Modifier.pressable({ Sounds.play(Sounds.CLICK); openGraph = r.id })
                                     .semantics { contentDescription = "Heart rate graph for ${df.format(Date(r.epochMillis))}. Opens full screen." },
                             )
                         }
@@ -177,6 +185,7 @@ private fun StepLine(number: String, title: String, detail: String) {
 fun HelpScreen() {
     val p = LocalPalette.current
     val ctx = LocalContext.current
+    var showGuide by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         ScreenHeading("A little guidance", "A steady finger. A clearer signal.")
         SectionPanel("Taking a reading") {
@@ -184,18 +193,26 @@ fun HelpScreen() {
             StepLine("02", "Cover the camera", "Use your fingertip, with light pressure. Keep the hand at heart height and don't talk.")
             StepLine("03", "Tap the orb", "Hold still for ${ScanSession.TARGET_SECONDS.toInt()} seconds.")
         }
+        SectionPanel(Publisher.readingGuideTitle) {
+            Publisher.readingGuide.split("\n\n").forEach { BodyText(it) }
+            Box(Modifier.fillMaxWidth().console().pressable({ Sounds.play(Sounds.CLICK); showGuide = true }).padding(14.dp), contentAlignment = Alignment.Center) {
+                Text("Open with the five-minute timer", color = p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM))
+            }
+        }
         Card("How it works", listOf(
             "Each time your heart beats, a little more blood fills the fingertip. Blood absorbs green light, so the fingertip lets through very slightly less green on every beat.",
             "With your finger over the rear camera and the flash on, the app averages the green channel of a square in the middle of every frame. That gives one number per frame. The pulse is only about 1% of that number, so most of the work is recovering it.",
             "The signal is resampled to an even rate and band-passed between 0.5 and 5 Hz forwards and backwards, which removes slow drift and fast noise without shifting the beats in time.",
             "Beats are found with a two-moving-average detector (Elgendi 2013). Intervals outside the range a fingertip can show — 30 to 240 beats a minute — are thrown away, and the rate is the median of the rest, so a missed beat or an extra one cannot swing it.",
         ))
-        Card("Quality, and a rhythm that swings", listOf(
-            "Each scan is scored on the shape of the pulse (skewness), on how closely every beat matches the average beat, and on the strength of the pulse compared with the light level. A pulse too weak to read is reported as an error instead of a value; anything else is kept.",
-            "A rhythm that comes unevenly is noted on the reading — low quality or arrhythmia — rather than thrown away. A camera cannot tell a poor signal from an irregular rhythm, and the app does not try to diagnose either. That note is what it is: a reason to treat the numbers on that reading with more caution.",
+        Card("Camera feed quality, and a rhythm that swings", listOf(
+            "Once a second the app scores the camera feed itself: how much of the lens the finger covers, whether the picture is clipped, too dark or too bright, whether frames were dropped, how noisy it is, whether the picture jumped, and how much the phone moved or shook (from its motion sensors). The score is the worst of those. It never looks at the beats, so a weak or uneven pulse does not lower it. It is the thin line over the graph on a saved reading.",
+            "A poor feed is marked low signal quality and says nothing about your heart. When the feed is usable and the beats come unevenly, the reading is marked an irregular pulse: a reason to check with a cuff or a clinician. If two of your last three scans within half an hour are irregular, the note says so more strongly. A fingertip camera cannot tell atrial fibrillation from extra beats or movement, so it never uses the word arrhythmia, and it shows no blood pressure for an irregular pulse.",
+            "Pressing too hard and a genuinely weak pulse look alike in the feed, so the app asks for lighter pressure before it calls a pulse weak. A pulse too weak to read at all is reported as an error instead of a value; anything else is kept.",
+            "On a saved reading you can leave out stretches of the graph, for example where the feed was poor, and the numbers are worked out again from the rest. Nothing is deleted, and you can put a stretch back.",
         ))
         Card("Blood pressure", listOf(
-            "The blood pressure figure is an estimate derived from pulse-shape features. Before calibration it is shown as a range; after calibration, as a single figure for each component. A camera cannot measure blood pressure on its own. Without calibration, version 1 starts from typical values for your age and sex and adjusts them by a small, capped amount. It has not been clinically validated.",
+            "The blood pressure figure is an estimate derived from pulse-shape features. A camera cannot measure blood pressure on its own. Blood pressure is shown without a calibration on Android, with the average error beside it; a paired cuff reading narrows that error to what is seen against your cuff. It starts from typical values for your age and sex, or your own typical pressure, and adjusts them by a small, capped amount. It has not been clinically validated, and a normal-looking estimate does not rule out high blood pressure.",
             "For reference, published calibration-free camera methods have a typical error of about 13–16 mmHg systolic and 7–9 mmHg diastolic. That is two to three times worse than the ISO 81060-2 criterion (mean difference within 5 mmHg, standard deviation within 8 mmHg). Finger-camera heart rate is typically within about 2 beats per minute of an ECG at rest.",
             "Do not use these results to make medical decisions. For an accurate blood pressure reading, use a clinically validated blood pressure monitor.",
         ))
@@ -215,6 +232,7 @@ fun HelpScreen() {
             }
         }
     }
+    if (showGuide) ReadingGuideDialog { showGuide = false }
 }
 
 // ---------------------------------------------------------------------------------------------- About
@@ -341,6 +359,7 @@ fun SettingsDialog(onDismiss: () -> Unit) {
             }
             SectionPanel("Not a medical device") {
                 BodyText(Publisher.disclaimerBody)
+                BodyText(Publisher.regulatory)
                 Box(Modifier.fillMaxWidth().console().pressable({ prefs.setOnboarded(false); onDismiss() }).padding(14.dp), contentAlignment = Alignment.Center) {
                     Text("Show the intro again", color = p.readoutSecondary, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM))
                 }

@@ -51,6 +51,16 @@ class Prefs(context: Context) {
     var workingFlash: Boolean? = sp.getInt("workingFlash", -1).let { if (it < 0) null else it == 1 }
         private set
 
+    /** Set once the first scan has opened the "Before you measure" guide. */
+    var guideSeen by mutableStateOf(sp.getBoolean("guideSeen", false))
+        private set
+    fun markGuideSeen() { guideSeen = true; sp.edit().putBoolean("guideSeen", true).apply() }
+
+    /** The last cuff name typed in the calibrate dialog, offered again next time. */
+    var lastCuffName by mutableStateOf(sp.getString("lastCuffName", "") ?: "")
+        private set
+    fun rememberCuffName(v: String) { lastCuffName = v; sp.edit().putString("lastCuffName", v).apply() }
+
     val usual: UsualBP?
         get() {
             val u = UsualBP(usualSystolic, usualDiastolic)
@@ -89,7 +99,7 @@ class Prefs(context: Context) {
         for (p in c.points) {
             arr.put(JSONObject().put("rs", p.rawSystolic).put("rd", p.rawDiastolic).put("cs", p.cuffSystolic)
                 .put("cd", p.cuffDiastolic).put("t", p.epochSeconds).put("device", p.device ?: JSONObject.NULL)
-                .put("bs", p.baseSystolic ?: JSONObject.NULL).put("bd", p.baseDiastolic ?: JSONObject.NULL))
+                .put("bs", p.baseSystolic ?: JSONObject.NULL).put("bd", p.baseDiastolic ?: JSONObject.NULL).put("cuff", p.cuffName ?: JSONObject.NULL))
         }
         sp.edit().putString("bpCalibration", arr.toString()).apply()
     }
@@ -103,7 +113,8 @@ class Prefs(context: Context) {
                 CalibrationPoint(o.getDouble("rs"), o.getDouble("rd"), o.getDouble("cs"), o.getDouble("cd"), o.getDouble("t"),
                     if (o.isNull("device")) null else o.getString("device"),
                     if (!o.has("bs") || o.isNull("bs")) null else o.getDouble("bs"),
-                    if (!o.has("bd") || o.isNull("bd")) null else o.getDouble("bd"))
+                    if (!o.has("bd") || o.isNull("bd")) null else o.getDouble("bd"),
+                    if (!o.has("cuff") || o.isNull("cuff")) null else o.getString("cuff"))
             })
         } catch (e: Exception) {
             BPCalibration()

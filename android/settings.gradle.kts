@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "VitaLibre"
-include(":core", ":app")
+include(":core", ":app", ":trainer")

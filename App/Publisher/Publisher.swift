@@ -28,6 +28,16 @@ struct Policy: Decodable {
     let regulatory: String
     let calibrationHowTitle: String
     let calibrationHow: String
+    /// The line beside any blood-pressure figure.
+    let bpCaveat: String
+    /// How long a paired cuff reading keeps blood pressure on display on iOS.
+    let bpCalibrationValidDays: Int
+    /// "calibrated" shows a figure on iOS only while a cuff calibration is current; "never" hides it there.
+    let iosBpDisplay: String
+    let readingGuideTitle: String
+    let readingGuide: String
+    let restTimerTitle: String
+    let restTimerDone: String
 }
 
 enum Publisher {

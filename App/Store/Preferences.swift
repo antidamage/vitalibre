@@ -28,6 +28,8 @@ final class Preferences: ObservableObject {
     @Published var calibration: BPCalibration {
         didSet { defaults.set(try? JSONEncoder().encode(calibration), forKey: "bpCalibration") }
     }
+    /// Whether "Before you measure" has been shown, so the first scan opens it once.
+    @Published var guideSeen: Bool { didSet { defaults.set(guideSeen, forKey: "guideSeen") } }
     @Published var simulatedPulse: Bool { didSet { defaults.set(simulatedPulse, forKey: "simulatedPulse") } }
     /// The flash state the last reading settled on; a scan starts from it. nil = not known yet.
     @Published var workingFlash: Bool? {
@@ -50,6 +52,7 @@ final class Preferences: ObservableObject {
         // A value saved before confirmation existed was chosen by the person.
         usualConfirmed = defaults.object(forKey: "usualConfirmed") as? Bool ?? (storedSystolic > 0 && storedDiastolic > 0)
         calibration = (defaults.data(forKey: "bpCalibration").flatMap { try? JSONDecoder().decode(BPCalibration.self, from: $0) }) ?? BPCalibration()
+        guideSeen = defaults.bool(forKey: "guideSeen")
         simulatedPulse = defaults.object(forKey: "simulatedPulse") as? Bool ?? true
         workingFlash = defaults.object(forKey: "workingFlash") as? Bool
     }

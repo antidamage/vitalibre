@@ -34,6 +34,10 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private var lastCoveredT = -10.0
     private var wantTorch = false
     private var lastTorchCheck = -10.0
+    /// When the camera last did something to the picture (lock changed, torch re-applied or switched). A sample
+    /// within half a second of it is marked, and the feed-quality index says "the camera is adjusting".
+    private var lastEventT = -10.0
+    private var latestT = 0.0
     /// The flash decision, from the samples alone. See FlashPolicy.
     private var policy = FlashPolicy()
     /// The flash state the last reading settled on; a scan starts from it. Set by the Measurer before start.
@@ -42,8 +46,16 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     /// queue while a frame is handled and read from the main queue, so access is guarded here (Android marks the
     /// same two fields `@Volatile`).
     private let stateLock = NSLock()
+    private var stateEpoch: Double?
     private var stateFlashUsed: Bool?
     private var stateDecisionPending = false
+
+    /// The system uptime at which this scan's clock read zero (the first frame's timestamp), so the phone's
+    /// motion samples can be put on the same clock. nil before the first frame.
+    var clockEpoch: Double? {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return stateEpoch
+    }
 
     var flashUsed: Bool? {
         stateLock.lock(); defer { stateLock.unlock() }
@@ -76,7 +88,10 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             queue.async {
                 do {
                     try self.configureIfNeeded()
-                    self.t0 = nil; self.lastTorchCheck = -10; self.locked = false; self.coverStart = nil; self.lastCoveredT = -10; self.unlockedAt = -10
+                    self.t0 = nil
+                    self.stateLock.lock(); self.stateEpoch = nil; self.stateLock.unlock()
+                    self.lastEventT = -10
+                    self.lastTorchCheck = -10; self.locked = false; self.coverStart = nil; self.lastCoveredT = -10; self.unlockedAt = -10
                     self.session.startRunning()
                     // With no memory the flash starts off and is switched on only if the signal turns out too
                     // flat (see FlashPolicy). A remembered state is used straight away and not re-tested.
@@ -147,6 +162,7 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         if dev.isWhiteBalanceModeSupported(balance) { dev.whiteBalanceMode = balance }
         let focus: AVCaptureDevice.FocusMode = lock ? .locked : .continuousAutoFocus
         if dev.isFocusModeSupported(focus) { dev.focusMode = focus }
+        if locked != lock { lastEventT = latestT }
         locked = lock
     }
 
@@ -155,7 +171,7 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private func holdTorch(_ t: Double) {
         guard wantTorch, t - lastTorchCheck >= 0.5, let dev = device else { return }
         lastTorchCheck = t
-        if dev.torchMode != .on || !dev.isTorchActive { try? setTorch(on: true) }
+        if dev.torchMode != .on || !dev.isTorchActive { try? setTorch(on: true); lastEventT = t }
     }
 
     private func manageLock(_ s: PPGSample) {
@@ -175,6 +191,7 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private func apply(_ action: FlashPolicy.Action, at t: Double) {
         if case .setTorch(let on) = action {
             wantTorch = on
+            lastEventT = t
             try? setTorch(on: on)
             // The lighting is changing, so the exposure lock is released and the light given a second to settle
             // before exposure, white balance and focus are frozen again: a trial measured through the flash-off
@@ -188,7 +205,10 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let stamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        if t0 == nil { t0 = stamp }
+        if t0 == nil {
+            t0 = stamp
+            stateLock.lock(); stateEpoch = CMTimeGetSeconds(stamp); stateLock.unlock()
+        }
         let t = CMTimeGetSeconds(CMTimeSubtract(stamp, t0!))
 
         CVPixelBufferLockBaseAddress(pixels, .readOnly)
@@ -200,19 +220,31 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         let x0 = (w - side) / 2, y0 = (h - side) / 2
         let bytes = base.assumingMemoryBound(to: UInt8.self)
         var sumR = 0, sumG = 0, sumB = 0, hot = 0, n = 0
+        // A 4 x 4 grid over the same square: how much of it looks like covered finger (feed quality, "coverage").
+        var tileR = [Int](repeating: 0, count: 16), tileG = [Int](repeating: 0, count: 16), tileN = [Int](repeating: 0, count: 16)
         for y in Swift.stride(from: y0, to: y0 + side, by: 2) {
             let row = bytes + y * stride
+            let ty = min(3, (y - y0) * 4 / side)
             for x in Swift.stride(from: x0, to: x0 + side, by: 2) {
                 let p = row + x * 4
                 sumB += Int(p[0]); sumG += Int(p[1]); sumR += Int(p[2])
                 // The green channel carries the pulse; red clips on nearly every pixel of a covered fingertip.
                 if p[1] >= 250 { hot += 1 }
                 n += 1
+                let k = ty * 4 + min(3, (x - x0) * 4 / side)
+                tileR[k] += Int(p[2]); tileG[k] += Int(p[1]); tileN[k] += 1
             }
         }
         guard n > 0 else { return }
+        var coveredTiles = 0
+        for k in 0..<16 where tileN[k] > 0 {
+            let r = Double(tileR[k]) / Double(tileN[k]), g = Double(tileG[k]) / Double(tileN[k])
+            if r >= 80 && g <= 0.7 * r { coveredTiles += 1 }
+        }
+        latestT = t
         let s = PPGSample(t: t, r: Double(sumR) / Double(n), g: Double(sumG) / Double(n),
-                          b: Double(sumB) / Double(n), saturated: Double(hot) / Double(n))
+                          b: Double(sumB) / Double(n), saturated: Double(hot) / Double(n),
+                          coverage: Double(coveredTiles) / 16, event: t - lastEventT < 0.5)
         manageLock(s)
         apply(policy.regulate(s), at: t)
         DispatchQueue.main.async { [weak self] in self?.onSample?(s) }

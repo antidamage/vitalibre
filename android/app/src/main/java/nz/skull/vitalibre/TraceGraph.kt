@@ -15,6 +15,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.sp
+import nz.skull.vitalibre.core.ExcludedRange
+import nz.skull.vitalibre.core.FeedQuality
+import nz.skull.vitalibre.core.ScanSession
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
@@ -90,6 +98,69 @@ fun DrawScope.drawFlatTrace(trace: List<Double>, p: Palette, graphSize: Size = t
     }
     for ((path, colour) in segs) {
         drawPath(path, colour, style = Stroke(1f * density, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+    }
+}
+
+/**
+ * What the saved reading's graph draws over the waveform: the feed-quality line, the seconds it calls poor,
+ * the stretches the user has left out, and the stretch being dragged. All times are seconds from the start
+ * of the covered run, the axis the stored trace, the feed series and the exclusions share (feed point `k`
+ * is the window ending `k + 1` s into the run).
+ */
+data class TraceOverlay(
+    val traceStart: Double,
+    val feed: List<Double>?,
+    val excluded: List<ExcludedRange> = emptyList(),
+    val selection: ExcludedRange? = null,
+)
+
+/** Draws [o] across [graphSize], where [seconds] of trace span the whole width. */
+fun DrawScope.drawTraceOverlay(o: TraceOverlay, graphSize: Size, seconds: Double, p: Palette, measurer: TextMeasurer) {
+    if (seconds <= 0) return
+    val h = graphSize.height
+    fun x(t: Double) = ((t - o.traceStart) / seconds * graphSize.width).toFloat()
+
+    // Seconds along the foot, a label every five.
+    var s = Math.ceil(o.traceStart).toInt()
+    while (s <= o.traceStart + seconds) {
+        val px = x(s.toDouble())
+        val len = if (s % 5 == 0) 6f else 3f
+        drawLine(p.readoutSecondary.copy(alpha = 0.5f), Offset(px, h), Offset(px, h - len * density), strokeWidth = 0.5f * density)
+        if (s % 5 == 0) {
+            drawText(measurer, "${s}s", Offset(px + 3 * density, h - 20 * density),
+                style = androidx.compose.ui.text.TextStyle(color = p.readoutSecondary, fontSize = 10.sp))
+        }
+        s++
+    }
+
+    o.feed?.let { feed ->
+        // Seconds the index calls below fair are shaded as a suggestion. Nothing is left out for the user.
+        feed.forEachIndexed { k, v ->
+            if (v < FeedQuality.FAIR) {
+                val t1 = (k + 1).toDouble()
+                drawRect(p.led.copy(alpha = 0.12f), Offset(x(t1 - 1), 0f), Size(x(t1) - x(t1 - 1), h), style = Fill)
+            }
+        }
+        // The index itself: thin, half opacity, 0 at the foot and 1 at the top.
+        val line = Path()
+        feed.forEachIndexed { k, v ->
+            val pt = Offset(x((k + 1).toDouble()), h - 2 * density - v.coerceIn(0.0, 1.0).toFloat() * (h - 4 * density))
+            if (k == 0) line.moveTo(pt.x, pt.y) else line.lineTo(pt.x, pt.y)
+        }
+        drawPath(line, p.readout.copy(alpha = 0.5f), style = Stroke(1f * density))
+    }
+
+    for (r in o.excluded) {
+        val a = x(r.start); val b = x(r.end)
+        drawRect(p.background.copy(alpha = 0.72f), Offset(a, 0f), Size(b - a, h), style = Fill)
+        for (edge in listOf(a, b)) {
+            drawLine(p.led.copy(alpha = 0.6f), Offset(edge, 0f), Offset(edge, h), strokeWidth = 1f * density,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f * density, 3f * density)))
+        }
+    }
+
+    o.selection?.let { sel ->
+        drawRect(p.led.copy(alpha = 0.25f), Offset(x(sel.start), 0f), Size(x(sel.end) - x(sel.start), h), style = Fill)
     }
 }
 

@@ -11,6 +11,8 @@ struct CalibrationPoint: Codable, Equatable {
     /// points, which were taken on the model's own base.
     var baseSystolic: Double? = nil
     var baseDiastolic: Double? = nil
+    /// Which cuff the reading came from, free text, so a comparison can name its reference. nil when not given.
+    var cuffName: String? = nil
 
     static func isPlausible(systolic: Double, diastolic: Double) -> Bool {
         (70...250).contains(systolic) && (40...150).contains(diastolic) && systolic > diastolic + 10
@@ -30,6 +32,23 @@ struct BPCalibration: Codable, Equatable {
 
     var count: Int { points.count }
 
+    /// How long a paired cuff reading keeps blood pressure on display (iOS). `policy.json` can override it.
+    static let defaultValidDays = 30
+
+    /// The date the newest paired cuff reading was taken, or nil with none.
+    var newestDate: Date? { points.map(\.date).max() }
+
+    /// A calibration is current while its newest paired cuff reading is at most `validDays` old. Only a
+    /// paired reading counts: it is the only thing that measures the model against a reference.
+    func isCurrent(now: Date = Date(), validDays: Int = BPCalibration.defaultValidDays) -> Bool {
+        guard let d = newestDate else { return false }
+        return now.timeIntervalSince(d) <= Double(validDays) * 86400
+    }
+
+    func expiry(validDays: Int = BPCalibration.defaultValidDays) -> Date? {
+        newestDate.map { $0.addingTimeInterval(Double(validDays) * 86400) }
+    }
+
     typealias Base = (systolic: Double, diastolic: Double)
 
     /// What each pairing says the estimate should shift by, measured against the CURRENT starting point.
@@ -46,6 +65,13 @@ struct BPCalibration: Codable, Equatable {
         let g = gaps(base: base, legacy: legacy)
         let cap = Self.maxOffset
         return (max(-cap, min(cap, Stats.mean(g.s))), max(-cap, min(cap, Stats.mean(g.d))))
+    }
+
+    /// 1.64 x the residual SD against this person's cuff, or nil before three pairings. Not capped or floored.
+    func cuffSpread(base: Base, legacy: Base) -> (systolic: Double, diastolic: Double)? {
+        guard points.count >= Self.minPointsForNarrowing else { return nil }
+        let g = gaps(base: base, legacy: legacy)
+        return (1.64 * Stats.std(g.s), 1.64 * Stats.std(g.d))
     }
 
     /// Half-widths for the displayed range. `fallback` is the model's population figure.

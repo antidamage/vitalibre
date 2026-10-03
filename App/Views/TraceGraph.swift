@@ -70,10 +70,13 @@ enum TraceLine {
 struct TraceGraph: View {
     let trace: [Double]
     let palette: Palette
+    /// Only the saved reading's full-screen graph carries one; the band and the orb draw the line alone.
+    var overlay: TraceOverlay? = nil
 
     var body: some View {
         Canvas { ctx, size in
             TraceLine.draw(trace, in: size, palette, &ctx)
+            overlay?.draw(in: size, seconds: Double(max(1, trace.count - 1)) / ScanSession.analysisRate, palette, &ctx)
             // The graph's own zero, so a trace that sits high or low reads as high or low.
             var middle = Path()
             middle.move(to: CGPoint(x: 0, y: size.height / 2))

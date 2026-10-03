@@ -1,0 +1,49 @@
+﻿CP-PPG windows 6340 from 140 subjects; BUT windows 1725 from 38 subjects
+prior (b): sbp 118 age 0.5/yr male +/-2; dbp 76 age 0.15/yr male +/-1
+CP-PPG subject labels: sbp 119.2 sd 19.3, dbp 70.8 sd 11.7, age 38 sd 18
+BUT subject labels: sbp 124.0 sd 14.6, dbp 76.9 sd 6.7, age 33 sd 17
+
+CP-PPG subject-wise 5-fold CV x 5 shuffles (SE = SD of the 5 repeat MAEs / sqrt(5); split noise only)
+  mean-of-training                 | sbp MAE 15.44 (SE 0.05), ME +0.00 +/- 19.35, r -0.15 | dbp MAE 9.06 (SE 0.03), ME +0.00 +/- 11.80, r -0.18
+  prior age/sex (b)                | sbp MAE 12.13 (SE 0.00), ME +2.46 +/- 15.17, r +0.63 | dbp MAE 10.13 (SE 0.00), ME +6.28 +/- 10.43, r +0.53
+  prior-1 full (incl. v1 terms)    | sbp MAE 12.85 (SE 0.00), ME +2.76 +/- 15.80, r +0.60 | dbp MAE 10.62 (SE 0.00), ME +6.79 +/- 10.77, r +0.47
+  age/sex refit (no features)      | sbp MAE 11.50 (SE 0.05), ME -0.00 +/- 15.45, r +0.59 | dbp MAE 7.24 (SE 0.03), ME -0.01 +/- 9.90, r +0.53
+  trained (v2 candidate)           | sbp MAE 11.68 (SE 0.06), ME +0.04 +/- 15.67, r +0.58 | dbp MAE 7.39 (SE 0.02), ME +0.02 +/- 9.90, r +0.54
+  systolic MAE gain, prior(b) - trained, repeat 1: +0.38 mmHg (subject bootstrap 95% CI -0.23 to +1.03)
+
+BUT PPG held-out, all labelled at-rest subjects (trained on all CP-PPG): 38 subjects, 1725 windows
+  mean-of-training                 sbp MAE 11.95 ME -2.75 +/- 14.22 r +nan | dbp MAE 7.38 ME -5.23 +/- 7.70 r +nan
+  prior age/sex (b)                sbp MAE 10.83 ME -2.37 +/- 13.41 r +0.32 | dbp MAE 6.25 ME +0.46 +/- 7.78 r +0.10
+  prior-1 full (incl. v1 terms)    sbp MAE 12.78 ME -7.59 +/- 14.23 r +0.26 | dbp MAE 6.63 ME -2.49 +/- 7.96 r +0.11
+  age/sex refit (no features)      sbp MAE 12.05 ME -5.44 +/- 14.33 r +0.29 | dbp MAE 9.81 ME -6.82 +/- 9.73 r -0.01
+  trained (v2 candidate)           sbp MAE 11.93 ME -5.29 +/- 14.12 r +0.31 | dbp MAE 9.70 ME -6.58 +/- 9.73 r -0.02
+  systolic MAE gain, prior(b) - trained: -1.10 mmHg (subject bootstrap 95% CI -2.08 to -0.13)
+
+  BUT PPG Ear/finger code 0 only: 20 subjects, 776 windows
+  mean-of-training                 sbp MAE 12.27 ME -3.33 +/- 14.15 r +nan | dbp MAE 8.65 ME -7.26 +/- 7.76 r +nan
+  prior age/sex (b)                sbp MAE 11.24 ME -0.55 +/- 14.26 r +0.20 | dbp MAE 7.21 ME -0.85 +/- 8.70 r -0.07
+  prior-1 full (incl. v1 terms)    sbp MAE 12.14 ME -4.70 +/- 15.12 r +0.17 | dbp MAE 7.73 ME -3.04 +/- 9.06 r -0.09
+  age/sex refit (no features)      sbp MAE 12.25 ME -2.95 +/- 15.66 r +0.17 | dbp MAE 11.38 ME -7.14 +/- 11.78 r -0.18
+  trained (v2 candidate)           sbp MAE 12.23 ME -3.24 +/- 15.45 r +0.19 | dbp MAE 11.46 ME -7.40 +/- 11.68 r -0.22
+  systolic MAE gain, prior(b) - trained: -0.99 mmHg (subject bootstrap 95% CI -2.41 to +0.43)
+
+  BUT PPG Ear/finger code 1 only: 18 subjects, 949 windows
+  mean-of-training                 sbp MAE 11.59 ME -2.10 +/- 14.27 r +nan | dbp MAE 5.96 ME -2.97 +/- 6.96 r +nan
+  prior age/sex (b)                sbp MAE 10.37 ME -4.40 +/- 12.08 r +0.68 | dbp MAE 5.20 ME +1.92 +/- 6.28 r +0.35
+  prior-1 full (incl. v1 terms)    sbp MAE 13.50 ME -10.80 +/- 12.40 r +0.66 | dbp MAE 5.40 ME -1.87 +/- 6.46 r +0.35
+  age/sex refit (no features)      sbp MAE 11.83 ME -8.20 +/- 12.11 r +0.65 | dbp MAE 8.08 ME -6.47 +/- 6.72 r +0.29
+  trained (v2 candidate)           sbp MAE 11.59 ME -7.57 +/- 12.09 r +0.66 | dbp MAE 7.74 ME -5.66 +/- 6.85 r +0.33
+  systolic MAE gain, prior(b) - trained: -1.22 mmHg (subject bootstrap 95% CI -2.50 to +0.10)
+
+4-wavelength (660 nm reflection PPG, 200 Hz), excluding subjects that also appear in CP-PPG: 97 subjects, 767 windows
+  mean-of-training                 sbp MAE 21.87 ME -17.04 +/- 23.05 r +nan | dbp MAE 10.46 ME -7.91 +/- 11.99 r +nan
+  prior age/sex (b)                sbp MAE 16.64 ME -3.52 +/- 21.19 r +0.41 | dbp MAE 9.57 ME +1.56 +/- 11.91 r +0.13
+  prior-1 full (incl. v1 terms)    sbp MAE 17.33 ME -5.72 +/- 21.74 r +0.34 | dbp MAE 9.96 ME +0.57 +/- 12.26 r +0.08
+  age/sex refit (no features)      sbp MAE 16.50 ME -2.81 +/- 21.02 r +0.41 | dbp MAE 9.81 ME +0.47 +/- 12.50 r +0.08
+  trained (v2 candidate)           sbp MAE 16.60 ME -2.39 +/- 21.07 r +0.41 | dbp MAE 9.81 ME +1.46 +/- 12.41 r +0.09
+  systolic MAE gain, prior(b) - trained: +0.05 mmHg (subject bootstrap 95% CI -0.36 to +0.44)
+
+DECISION: CP-PPG CV systolic gain +0.46, BUT held-out gain -1.10 mmHg; need >= 1.0 on both -> FAIL, no candidate written
+final fit on all CP-PPG, systolic: {'intercept': np.float64(114.56), 'age/yr': np.float64(0.63), 'male': np.float64(2.142), 'heartRate': np.float64(-0.02), 'intervalCV': np.float64(-0.539), 'crestFraction': np.float64(0.392), 'skewness': np.float64(0.276), 'reflectionIndex': np.float64(-0.622)}
+final fit on all CP-PPG, diastolic: {'intercept': np.float64(68.195), 'age/yr': np.float64(0.342), 'male': np.float64(-0.012), 'heartRate': np.float64(0.817), 'intervalCV': np.float64(-0.952), 'crestFraction': np.float64(0.656), 'skewness': np.float64(-0.19), 'reflectionIndex': np.float64(-0.487)}
+adjustment caps (95th pct of |feature adjustment|): {'sbp': 1.88, 'dbp': 2.92}

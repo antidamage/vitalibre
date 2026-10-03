@@ -37,8 +37,8 @@ final class ReadingStore: ObservableObject {
     /// saving it. Keyed by the scan: filing the same scan again refreshes that one
     /// reading rather than adding another.
     @discardableResult
-    func file(_ result: ScanResult, scanID: UUID, at date: Date = Date()) -> Reading {
-        let r = log.file(result, scanID: scanID, at: date)
+    func file(_ result: ScanResult, scanID: UUID, bpShown: Bool? = nil, at date: Date = Date()) -> Reading {
+        let r = log.file(result, scanID: scanID, bpShown: bpShown, at: date)
         commit()
         return r
     }
@@ -63,5 +63,19 @@ final class ReadingStore: ObservableObject {
         commit()
     }
 
-    func exportText() -> String { log.exportText() }
+    /// The user's exclusions for a reading, with the numbers recomputed without them (nil clears both).
+    func setExclusions(_ id: UUID, _ ranges: [ExcludedRange], outcome: ReadingEdit.Outcome?) {
+        log.setExclusions(id, ranges, outcome: outcome)
+        commit()
+    }
+
+    func noteText(for reading: Reading) -> String? { log.noteText(for: reading) }
+
+    func exportText(showBP: (Reading) -> Bool) -> String { log.exportText(showBP: showBP) }
+
+    /// Every cuff comparison and every reading's raw model values, for working out the app's error against a cuff.
+    func validationCSV(calibration: BPCalibration, appVersion: String, modelVersion: String, showBP: (Reading) -> Bool) -> String {
+        ValidationExport.csv(calibration: calibration, readings: log.savedReadings, appVersion: appVersion,
+                             modelVersion: modelVersion, includeRaw: BPPresentation.mode != "never", showBP: showBP)
+    }
 }

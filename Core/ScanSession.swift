@@ -7,6 +7,10 @@ struct PPGSample: Equatable {
     /// Fraction of ROI pixels at or near full scale in the green channel (the one the pulse is read from;
     /// red clips on any fingertip under the torch).
     var saturated: Double
+    /// Share of a 4 x 4 grid of the frame that looks like covered finger. 1 when the platform does not measure it.
+    var coverage: Double = 1
+    /// The camera did something to the picture just now (exposure step, white balance lock, torch re-applied).
+    var event: Bool = false
 
     /// A fingertip over the lens and torch: red high, green well below it.
     var covered: Bool { r >= 80 && g <= 0.7 * r && saturated < 0.85 }
@@ -34,6 +38,8 @@ enum ScanFailure: Error, Equatable {
 
 enum Guidance: Equatable {
     case coverLens, hold, pressLighter, keepStill, good
+    /// The feed-quality index named a cause (`FeedQuality`); the prompt is that cause's advice.
+    case feed(FeedCause)
 
     var text: String {
         switch self {
@@ -42,6 +48,7 @@ enum Guidance: Equatable {
         case .pressLighter: return "Press more lightly"
         case .keepStill: return "Keep still"
         case .good: return "Good signal"
+        case .feed(let cause): return cause.advice ?? "Hold still — reading"
         }
     }
 }
@@ -68,6 +75,10 @@ struct ScanResult: Equatable {
     var trace: [Double]
     /// Seconds from the run's start to the trace's last sample.
     var traceEnd: Double
+    /// Seconds from the run's start to the trace's first sample.
+    var traceStart: Double
+    /// Feed quality once a second, from the second after cover (`FeedQuality.series`).
+    var feed: [FeedQuality.Point]
 }
 
 /// What the orb shows while a scan is still running.
@@ -90,8 +101,10 @@ struct ScanSession {
     static let maxGapSeconds = 0.3
 
     private(set) var samples: [PPGSample] = []
+    private(set) var motion: [MotionSample] = []
 
     mutating func add(_ s: PPGSample) { samples.append(s) }
+    mutating func addMotion(_ m: MotionSample) { motion.append(m) }
 
     var elapsed: Double { samples.count > 1 ? samples[samples.count - 1].t - samples[0].t : 0 }
 
@@ -112,6 +125,9 @@ struct ScanSession {
     var guidance: Guidance {
         guard let last = samples.last, last.covered else { return .coverLens }
         if last.saturated > 0.5 { return .pressLighter }
+        if currentRunSeconds > Self.settleSeconds + 2,
+           let p = FeedQuality.latest(samples: Array(samples.suffix(240)), motion: Array(motion.suffix(400))),
+           p.cause != .none, p.cause != .noise { return .feed(p.cause) }
         let recent = samples.suffix(30)
         if recent.count >= 15 {
             let g = recent.map(\.g), spread = Stats.std(g) / max(1, Stats.mean(g))
@@ -144,6 +160,13 @@ struct ScanSession {
         let raw = Filters.resample(times: slice.map(\.t), values: slice.map(\.g), rate: Self.analysisRate)
         let filtered = Filters.bandpass(raw.map { -$0 }, fs: Self.analysisRate)
         return (filtered, raw, slice[0].t - samples[run.start].t)
+    }
+
+    /// Feed quality once a second over the longest covered run, in run seconds.
+    func feedSeries() -> [FeedQuality.Point] {
+        guard let run = longestRun() else { return [] }
+        return FeedQuality.series(samples: samples, motion: motion,
+                                  runStart: samples[run.start].t, runEnd: samples[run.end].t)
     }
 
     /// Covers the whole run so far (up to one revolution of the orb), or the last `seconds`.
@@ -212,7 +235,8 @@ struct ScanSession {
                                        baseSystolic: BPEstimator.baseline(model: model, age: age, sex: sex, usual: usual).systolic,
                                        baseDiastolic: BPEstimator.baseline(model: model, age: age, sex: sex, usual: usual).diastolic,
                                        trace: Self.normalised(w.filtered),
-                                       traceEnd: w.start + Double(w.filtered.count - 1) / fs))
+                                       traceEnd: w.start + Double(w.filtered.count - 1) / fs,
+                                       traceStart: w.start, feed: feedSeries()))
         }
     }
 }

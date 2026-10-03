@@ -25,6 +25,14 @@ object Publisher {
     lateinit var regulatory: String
     lateinit var calibrationHowTitle: String
     lateinit var calibrationHow: String
+    lateinit var bpCaveat: String
+    var bpCalibrationValidDays: Int = 30
+    /** Read for completeness; the iOS display switch has no meaning on Android. */
+    var iosBpDisplay: String = "calibrated"
+    lateinit var readingGuideTitle: String
+    lateinit var readingGuide: String
+    lateinit var restTimerTitle: String
+    lateinit var restTimerDone: String
     lateinit var model: BPModel
 
     fun init(context: Context) {
@@ -49,6 +57,13 @@ object Publisher {
         regulatory = policy["regulatory"] as String
         calibrationHowTitle = policy["calibrationHowTitle"] as String
         calibrationHow = policy["calibrationHow"] as String
+        bpCaveat = policy["bpCaveat"] as String
+        bpCalibrationValidDays = (policy["bpCalibrationValidDays"] as? Number)?.toInt() ?: 30
+        iosBpDisplay = policy["iosBpDisplay"] as? String ?: "calibrated"
+        readingGuideTitle = policy["readingGuideTitle"] as String
+        readingGuide = policy["readingGuide"] as String
+        restTimerTitle = policy["restTimerTitle"] as String
+        restTimerDone = policy["restTimerDone"] as String
         model = try {
             BPModel.fromJson(text("bp-model.json"))
         } catch (e: Exception) {

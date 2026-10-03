@@ -140,11 +140,23 @@ object BPEstimator {
         return BPRange(s - ls, s + ls, d - ld, d + ld, s, d, calibration.count > 0 || usual?.isPlausible == true)
     }
 
-    /** Features from the filtered signal and its accepted beats. */
-    fun features(y: DoubleArray, beats: List<Beat>, hr: HeartRateEstimate, fs: Double): BPFeatures {
+    /**
+     * Features from the filtered signal and its accepted beats. [groups] and [kept] are for a reading with
+     * stretches discarded: beat shapes are read within each kept group (an interval is never taken across a
+     * cut) and skewness over the kept samples only.
+     */
+    fun features(
+        y: DoubleArray, beats: List<Beat>, hr: HeartRateEstimate, fs: Double,
+        groups: List<List<Beat>>? = null, kept: DoubleArray? = null,
+    ): BPFeatures {
         val cv = Stats.std(hr.intervals) / max(1e-9, Stats.mean(hr.intervals))
         val crest = mutableListOf<Double>()
         val reflect = mutableListOf<Double>()
+        for (g in groups ?: listOf(beats)) beatShapes(y, g, fs, crest, reflect)
+        return BPFeatures(hr.bpm, cv, Stats.median(crest.toDoubleArray()), Stats.skewness(kept ?: y), Stats.median(reflect.toDoubleArray()))
+    }
+
+    private fun beatShapes(y: DoubleArray, beats: List<Beat>, fs: Double, crest: MutableList<Double>, reflect: MutableList<Double>) {
         for ((i, b) in beats.withIndex()) {
             val interval = if (i + 1 < beats.size) beats[i + 1].time - b.time else if (i > 0) b.time - beats[i - 1].time else 0.0
             if (interval < HeartRate.MIN_INTERVAL || interval > HeartRate.MAX_INTERVAL) continue
@@ -162,6 +174,5 @@ object BPEstimator {
             }
             reflect.add(max(0.0, second / b.amplitude))
         }
-        return BPFeatures(hr.bpm, cv, Stats.median(crest.toDoubleArray()), Stats.skewness(y), Stats.median(reflect.toDoubleArray()))
     }
 }

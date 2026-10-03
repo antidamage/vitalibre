@@ -52,7 +52,9 @@ struct RootView: View {
         // land in the log just the same. `file` is keyed by the scan, so seeing the
         // same result again cannot add a second reading.
         .onChange(of: measurer.phase) { _, phase in
-            if case .result(let r) = phase { readings.file(r, scanID: measurer.scanID) }
+            // Eligible for display means a cuff calibration is current when the scan is filed (rhythm is judged live,
+            // so an edit that leaves out a bad stretch can change it).
+            if case .result(let r) = phase { readings.file(r, scanID: measurer.scanID, bpShown: BPPresentation.eligible(prefs)) }
         }
     }
 

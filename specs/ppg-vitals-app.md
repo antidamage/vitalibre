@@ -538,6 +538,185 @@ can work out the correct ranges, but timing shouldn't be a disqualifying factor"
   script on this machine). The iOS full-screen graph was photographed through a temporary local
   harness that opened it without a tap; that harness was reverted before the commit.
 
+## Revisions, 2026-10-04 (store-safe blood pressure, feed quality, a guide, trained weights)
+
+Produced by the plan `do-this-as-a-nifty-candy` (Adeline's interview, 2026-10-04). Supersedes anything above
+that disagrees. Where this section says "both platforms", the Swift and Kotlin cores carry the same constants.
+
+### Why
+
+Camera blood pressure without calibration misses ISO 81060-2 by 2-3x. The AHA and the ESH say cuffless devices
+should not be used to diagnose or manage hypertension. Apple App Review 1.4.1 does not permit apps that
+"measure blood pressure using only the sensors on the device" and asks for the data and method behind any
+health accuracy claim. Google Play asks non-regulated health apps to say they are not medical devices. Sources:
+Nature Digital Medicine doi 10.1038/s41746-022-00629-2; the AHA cuffless statement (Hypertension, 2023); the ESH
+cuffless statement (J Hypertens 2022; 40:1449); Apple's App Review Guidelines 1.4.1.
+
+### Blood pressure display
+
+- **Always computed and stored.** Every scan keeps the model's raw value and the calibrated estimate.
+- **iOS shows it only while a cuff calibration is current.** `BPCalibration.isCurrent(now:validDays:)`: the newest
+  paired cuff point is at most 30 days old (`bpCalibrationValidDays` in `publisher/config/policy.json`). Only a
+  paired cuff reading counts. The typed "usual resting pressure" does not unlock display: it would show the
+  person's own number back as an estimate. Android always shows it.
+- **Hidden state (iOS):** no number; "Blood pressure is hidden until you calibrate with a cuff reading"; the
+  existing Calibrate button. Calibrating re-derives the current result and shows it. Share text, share image and
+  the readings export omit a hidden figure. Readings store `bpShown` at scan time; a reading with none is hidden.
+- **Switch:** `iosBpDisplay` in `policy.json` is `calibrated` (default) or `never`. `never` hides BP on iOS
+  entirely; calibration points are still kept. It is the fallback if App Review rejects the calibrated form.
+- **An irregular pulse shows heart rate and no BP**, on both platforms: interval variability is a model input and an
+  irregular rhythm corrupts it, and cuff guidance in AF is to average several readings.
+- **Error margin** in small text under any figure: `+/-S / +/-D mmHg`. Without three calibration points it is the
+  model's population error (v1 fallback 14/9, a mean absolute error, so it covers about 57% of readings; the line
+  says "average error"). With three or more it is 1.64 x the residual SD against the person's own cuff, and the line
+  says "about 90% of your N cuff comparisons fall inside ... so a little optimistic" (it is in-sample) - but only when
+  that spread is no wider than the population error on both components; when it is wider the width shown is the
+  population error and the line says "average error" instead.
+- **Disclaimers:** `disclaimerBody` adds that a normal-looking estimate does not rule out high blood pressure and a
+  cuff reading takes precedence. A one-line caveat sits beside any figure. The `regulatory` line is shown in
+  About and in Settings. Help states the published accuracy figures; no model was trained (see "Training results").
+
+### Reading guide
+
+`policy.json` `readingGuideTitle` / `readingGuide`, shown as "Before you measure" on first use and from Measure
+and Help, with an optional 5-minute rest timer (no forced wait). The posture points come from the AHA scientific
+statement on measuring blood pressure in humans (Muntner et al., Hypertension 2019), checked 2026-10-04 against
+summaries of it: empty bladder; seated 5 minutes with back supported, feet flat on the floor and legs uncrossed;
+arm supported at heart level; no smoking, caffeine or exercise in the 30 minutes before. Not talking is standard
+practice. The phone points are this app's own, from how the camera feed behaves, and are not from the statement:
+the phone rests on the support and does not touch the chest (breathing and heartbeat move it); cover lens and
+flash, light pressure, warm hands; for tremor, rest wrist and elbow and lay the finger on the flat phone; same
+time of day, hand and position each time; calibrate in the same sitting, cuff and scan within a minute.
+
+### Feed quality: the camera feed, judged apart from the heart
+
+A 0-1 value per second (window: the 3 s ending then) of how good the camera feed is, from measures that use
+neither beat intervals nor pulse amplitude, so an irregular or weak pulse cannot lower it. The minimum of:
+
+| Factor | Measure | 1 at | 0 at |
+|---|---|---|---|
+| coverage | share of a 4x4 grid of the frame that looks like covered finger | 0.9 | 0.5 |
+| clipping | green-channel saturated fraction | 0.2 | 0.6 |
+| DC level | mean raw green | 40..230 | below 25 or above 245 |
+| frame timing | share of frames after a gap over 1.5x the median frame period | 0 | 0.2 |
+| noise | noise over DC, from the mean power between 30% and 47% of the frame rate (9-14 Hz at 30 fps), Hann-windowed | 0.0005 | 0.004 |
+| DC steps | largest jump between 0.5 s means over DC | 0.015 | 0.06 |
+| phone movement | gyro RMS, 0.1-3 Hz | 0.05 rad/s | 0.3 rad/s |
+| tremor | gyro RMS, 4-12 Hz | 0.02 rad/s | 0.1 rad/s |
+| camera adjusting | an exposure, white-balance or torch action in the window | none | event in window = 0.3 |
+
+Constants are provisional: they were set against a synthetic corpus and have NOT yet been measured on a phone
+(see "Real-device check" below). They sit in one block (`FeedQuality`) and are the same on both platforms. Levels: good at 0.7 and above, fair from 0.4, poor below. The dominant cause is the factor
+with the lowest score when the value is under 0.7. Noise is read from a band above the pulse's harmonics (a
+systolic upstroke 70 ms wide has almost nothing above 9 Hz), at the real frame times. A second difference was tried
+first and rejected: at 120 bpm the pulse's own curvature fills most frames and the index fell below good on a clean feed. Template correlation is not an
+input: it is partly physiological.
+
+Known limit, written into Help: pressing too hard and a genuinely weak pulse look alike in the feed, so the app
+asks for lighter pressure before it calls a pulse weak. Tremor at 4-12 Hz overlaps pulse harmonics in the camera
+alone, which is why phone motion sensors feed the index.
+
+### Notes on a reading
+
+Now that feed quality is separate from rhythm, the single "Low quality or arrhythmia" note splits (this
+supersedes the 2026-10-04 wording above for new readings):
+- feed mean poor: **"Low signal quality"**;
+- otherwise rhythm irregular: **"Irregular pulse"**; escalates to "Irregular pulse, consider checking with a
+  clinician" when two of the last three scans within 30 minutes were irregular. The word "arrhythmia" is never
+  used: a 15 s fingertip window cannot tell AF from ectopic beats or motion;
+- readings with no feed series keep the old note.
+
+Nothing is refused for rhythm. Refusals remain the finger's: `notCovered`, `tooShort`, `noPulse`, `poorSignal`.
+
+### Quality on the saved graph, and discarding without losing
+
+The orb is unchanged. The saved reading's graph (`ReadingGraphView`) draws the feed-quality line over the
+waveform: thin, white at 50% opacity in dark; the light theme's ink at 50% in light. Stretches below fair are
+shaded as suggestions; nothing is excluded automatically. Drag across a stretch to exclude it; tap it to restore.
+Excluded stretches stay drawn, greyed, and are never deleted.
+
+- Recompute from the stored trace: beats are detected on the whole trace, beats inside an exclusion are dropped,
+  and intervals are taken only inside a kept stretch, never across a gap. Heart rate, rhythm and BP features come
+  from what is left. Under 8 s of kept signal: "too little signal left", and the previous result stays.
+  With no exclusions the stored result is shown unchanged; with some, the stored (normalised, clipped) trace
+  is re-analysed, so a few BP digits can differ slightly from the scan-time value.
+- The reading says how much was used ("12 of 15 s used"). The export carries excluded ranges and used seconds.
+- Stored on the reading: `feedQuality` (1 Hz, two decimals), `feedCauses`, `excluded` ranges (run seconds),
+  `bpShown`. All optional, so older readings still decode.
+
+### Paired validation export
+
+The existing Share action gains a CSV: one row per calibration point (date, device, app and model version, cuff
+systolic/diastolic, the model's raw values, base values, cuff name) and per reading (raw BP, used seconds,
+exclusions, feed mean). Nothing is sent anywhere. Validation protocol: three cuff readings averaged, five minutes
+seated, scan straight after, over several days; report Bland-Altman bias and SD and name the reference cuff.
+
+### Trained weights
+
+`bp-model.json` version 2 is trained only if it beats the age/sex prior by at least 1 mmHg systolic MAE under
+subject-wise cross-validation and on a held-out dataset; otherwise v1 stays and the result is recorded here.
+Training uses the app's own feature code (a JVM command over `android/core`) after making the waveforms look like
+the camera's (30 fps, green-channel polarity, camera-like noise). Data stays outside the repository, in a local data directory passed to the scripts;
+the repo carries the scripts only (`tools/train/`, `android/trainer/`).
+
+### Real-device check (not yet done)
+
+The index separates feed faults from physiology on the synthetic corpus (both cores, same constants). It has not
+been run against a real fingertip. To do it, take scans with the Share > "cuff comparisons" CSV (its rows carry
+`feed_series` and `feed_causes` once a second) and record: a normal cover; the finger lifted briefly; the hand
+shaken; the lens half covered; bright ambient light; pressing hard; and a reading that was previously rejected for
+rhythm. Faults must drop the index with the right cause; good readings must stay at 0.7 or above. Where they do not,
+change the constants block, not the corpus thresholds. Record the result here.
+
+### Training results (2026-10-04): the rule failed, v1 stays
+
+Data (all open, vetted for licence; weights derived from CC0 / CC BY data may be shipped with attribution): CP-PPG
+(figshare 29097578, CC BY 4.0; 140 usable subjects, 400 Hz red-channel contact PPG, 6,340 12 s windows), BUT PPG
+(PhysioNet v2.0.0, CC BY 4.0; the only phone-camera set, 30 Hz green channel; 38 labelled at-rest subjects, 1,725 windows
+after the app's own pulse check), and the 4-wavelength set (figshare 23283518, CC BY 4.0; 97 subjects not also in
+CP-PPG). Excluded: UCI Cuff-Less BP (no subject IDs), PulseDB (non-commercial and share-alike parts), Aurora-BP and
+MIMIC (credentialed or on request), M3PD (non-redistribution terms). Each window went through the app's own
+`ScanSession.analyse` as a 30 fps green channel, so features are the app's, with no train/serve skew.
+
+Subject-wise cross-validation on CP-PPG (5 folds x 5 shuffles) and held-out BUT PPG, systolic MAE in mmHg:
+
+| | CP-PPG CV | BUT held-out |
+|---|---|---|
+| predict the training mean | 15.44 | 11.95 |
+| age/sex prior (the app's v1 baseline, no pulse terms) | 12.13 | 10.83 |
+| v1 as shipped (prior plus its hand-set pulse terms) | 12.85 | 12.78 |
+| age/sex refit, no pulse features | 11.50 | 12.05 |
+| trained with pulse features | 11.68 | 11.93 |
+
+Fixed rule: ship only if the trained model beats the age/sex prior by at least 1 mmHg systolic on both. It gained
++0.46 on CP-PPG CV (a paired subject bootstrap on the first repeat gave +0.38, CI -0.23 to +1.03) and lost 1.10 on BUT (CI -2.08 to -0.13), and
++0.05 on the independent part of the 4-wavelength set. No candidate was written; `bp-model.json` stays at v1.
+Diastolic gains on CP-PPG come from the prior's base (76) sitting about 6 above that cohort's mean (70.8) and did not
+transfer (BUT mean 76.9).
+
+What this means, plainly:
+- Pulse-shape features carried no usable BP signal in these data. The hand-set v1 pulse terms made the prior worse
+  on both sets (by 0.7 mmHg on CP-PPG, 2 on BUT). Their cap is +/-8/+/-5 mmHg, so the damage is bounded, and the
+  fitted terms are within about 1 mmHg per SD. The displayed figure is, in practice, the starting value plus the
+  cuff-calibration offset, plus a small unsupported nudge.
+- The data cannot settle the question: one cuff value per subject (140 and 38 independent labels), a young
+  mostly-student CP-PPG cohort, CP-PPG is red-channel contact PPG rather than a phone, most BUT windows failed pulse
+  detection, and BUT's waveform orientation and finger/ear coding were not verifiable.
+- Known limits of the display rules. The calibration gate states intent, it does not verify: any plausible cuff entry
+  opens it, and the shown figure then sits on the typed value. Leaving a stretch out can turn an irregular reading
+  steady and so reveal a figure that was hidden. The running estimate on the orb while a scan is in progress is not
+  gated on rhythm, because the rhythm is only known at the end; it is gated on calibration.
+- Open decision for the owner: zero the pulse terms (figure = starting value + calibration offset) or keep them.
+  Not changed here.
+
+### Tests
+
+Kotlin and Swift cores: calibration validity and expiry; margin text both branches; feed-quality factors; a
+separation corpus (clean feed: index moves less than 0.1 across regular, sinus arrhythmia, AF-like, premature-beat,
+HR 45/120/180 and amplitude 0.1-1; each injected fault lowers it by more than 0.4 with the right cause);
+exclusions (HR within 2 bpm of truth after excluding a fault, no interval across a cut, restore returns the
+original, under 8 s refused); display gate decisions.
+
 ## Android build (branch `android`)
 
 Native Kotlin, Jetpack Compose and CameraX under `android/`; same design, theme, copy and numbers as the iOS build.
@@ -559,3 +738,4 @@ config with the iOS build through the asset path instead of copying them.
   measure page's whole-screen slide — the fold there still opens into its own room at the foot of the
   screen, and its row's kept mark is now a bookmark like the iOS build's.
 - **Licences on Android**: the app is GPL-3.0-or-later like the iOS build (same `LICENSE`). Compose, CameraX and AndroidX are Apache-2.0, which is compatible with GPLv3 and is credited in About. The Android manifest requests only CAMERA and VIBRATE; there is no network permission, so the "nothing is sent" statement holds there too. Both font licences (Chakra Petch, Rajdhani) ship in `App/Resources/Fonts`.
+

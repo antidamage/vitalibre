@@ -9,14 +9,6 @@ enum class QualityLevel { POOR, FAIR, GOOD;
     val label get() = name.lowercase()
 }
 
-/**
- * What a kept reading can be marked with. One phrase covers both causes, in the owner's words
- * (Adeline, 2026-10-04: "mark the reading as 'low quality or arrhythmia'"): the numbers cannot tell a
- * weak signal from an unsteady rhythm, so the app says both and diagnoses neither.
- */
-object ReadingNote {
-    const val LOW_QUALITY_OR_ARRHYTHMIA = "Low quality or arrhythmia"
-}
 
 data class SignalQuality(
     val skewness: Double,

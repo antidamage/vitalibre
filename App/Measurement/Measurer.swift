@@ -32,6 +32,7 @@ final class Measurer: ObservableObject {
     @Published private(set) var sweepOrigin = Date()
 
     let camera = CameraSource()
+    private let motion = MotionSource()
     private var simulated: SimulatedSource?
     private var session = ScanSession()
     private var lastUIUpdate = -1.0
@@ -50,6 +51,7 @@ final class Measurer: ObservableObject {
     }
 
     var modelVersion: String { model.version }
+    var bpModel: BPModel { model }
     /// The sweep is anchored to the scan's own clock only while a scan is running.
     var phaseIsLive: Bool { phase == .scanning }
     var isBusy: Bool { phase == .starting || phase == .scanning || phase == .analysing }
@@ -81,6 +83,10 @@ final class Measurer: ObservableObject {
             camera.onSample = { [weak self] s in Task { @MainActor in self?.receive(s) } }
             do {
                 try await camera.start()
+                // The phone's own movement, on the camera's clock, so a shaking hand can be told from a bad picture.
+                motion.cameraEpoch = { [weak self] in self?.camera.clockEpoch }
+                motion.onSample = { [weak self] m in Task { @MainActor in self?.session.addMotion(m) } }
+                motion.start()
                 scanStart = Date()
                 phase = .scanning
                 Haptics.start()
@@ -111,6 +117,7 @@ final class Measurer: ObservableObject {
     }
 
     private func stopSources() {
+        motion.stop()
         camera.stop()
         simulated?.stop(); simulated = nil
     }

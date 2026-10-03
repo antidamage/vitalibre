@@ -41,6 +41,11 @@ struct CalibrationSettingsSheet: View {
                 }
                 .padding(16).panel()
 
+                if let line = BPPresentation.expiryLine(prefs) {
+                    Text(line).font(.rajdhani(14)).foregroundStyle(palette.readoutSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         SectionTitle(text: Publisher.policy.calibrationHowTitle)

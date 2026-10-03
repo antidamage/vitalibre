@@ -30,6 +30,12 @@ struct SettingsView: View {
                     appearance
                     aboutYou
                     SectionPanel(title: "Calibration", symbol: "slider.horizontal.3") {
+                        if let line = BPPresentation.expiryLine(prefs) {
+                            Text(line).font(.rajdhani(15)).foregroundStyle(palette.readoutSecondary)
+                        } else if BPPresentation.mode != "never" {
+                            Text("Blood pressure is hidden until you calibrate with a cuff reading.")
+                                .font(.rajdhani(15)).foregroundStyle(palette.readoutSecondary)
+                        }
                         Button { showCalibration = true } label: {
                             HStack { Text("Typical pressure and cuff readings"); Spacer(); Image(systemName: "chevron.right") }
                                 .frame(maxWidth: .infinity)
@@ -43,6 +49,7 @@ struct SettingsView: View {
                     }
                     SectionPanel(title: "Not a medical device", symbol: "info.circle") {
                         Text(Publisher.policy.disclaimerBody).font(.rajdhani(16)).foregroundStyle(palette.readoutSecondary)
+                        Text(Publisher.policy.regulatory).font(.rajdhani(16)).foregroundStyle(palette.readoutSecondary)
                         Button("Show the intro again") { prefs.onboardedAt = nil; dismiss() }.buttonStyle(ConsoleStyle())
                     }
                     if isSimulator {

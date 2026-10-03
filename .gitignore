@@ -12,3 +12,6 @@ android/.gradle/
 android/**/build/
 android/local.properties
 android/.kotlin/
+
+# Python
+__pycache__/

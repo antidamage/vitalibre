@@ -9,6 +9,10 @@ data class PPGSample(
     val r: Double, val g: Double, val b: Double,
     /** Fraction of ROI pixels at or near full scale in the green channel (red clips on any fingertip under the torch). */
     val saturated: Double,
+    /** Share of a 4 x 4 grid of the frame that looks like covered finger. 1 when the platform does not measure it. */
+    val coverage: Double = 1.0,
+    /** The camera did something to the picture just now (exposure step, white balance lock, torch re-applied). */
+    val event: Boolean = false,
 ) {
     /** A fingertip over the lens and torch: red high, green well below it. */
     val covered: Boolean get() = r >= 80 && g <= 0.7 * r && saturated < 0.85
@@ -39,12 +43,16 @@ sealed interface ScanFailure {
     }
 }
 
-enum class Guidance(val text: String) {
-    COVER_LENS("Cover the lens and flash completely"),
-    HOLD("Hold still — reading"),
-    PRESS_LIGHTER("Press more lightly"),
-    KEEP_STILL("Keep still"),
-    GOOD("Good signal"),
+/** What to tell the user while a scan runs. [FEED] carries the cause the feed-quality index named. */
+data class Guidance(val text: String, val cause: FeedCause = FeedCause.NONE) {
+    companion object {
+        val COVER_LENS = Guidance("Cover the lens and flash completely")
+        val HOLD = Guidance("Hold still — reading")
+        val PRESS_LIGHTER = Guidance("Press more lightly")
+        val KEEP_STILL = Guidance("Keep still")
+        val GOOD = Guidance("Good signal")
+        fun feed(cause: FeedCause) = Guidance(cause.advice ?: HOLD.text, cause)
+    }
 }
 
 class ScanResult(
@@ -68,9 +76,13 @@ class ScanResult(
     val trace: DoubleArray,
     /** Seconds from the run's start to the trace's last sample. */
     val traceEnd: Double,
+    /** Seconds from the run's start to the trace's first sample. */
+    val traceStart: Double,
+    /** Feed quality once a second from the second after cover ([FeedQuality.series]). */
+    val feed: List<FeedQuality.Point>,
 ) {
     fun withBP(bp: BPRange) = ScanResult(heartRate, bp, quality, level, rhythm, duration, intervals, modelVersion, features,
-        rawSystolic, rawDiastolic, baseSystolic, baseDiastolic, trace, traceEnd)
+        rawSystolic, rawDiastolic, baseSystolic, baseDiastolic, trace, traceEnd, traceStart, feed)
 }
 
 /** What the orb shows while a scan is still running. */
@@ -90,11 +102,14 @@ sealed interface ScanOutcome {
 
 class ScanSession(initial: List<PPGSample> = emptyList()) {
     private val samples = ArrayList<PPGSample>(initial)
+    private val motion = ArrayList<MotionSample>()
 
     fun add(s: PPGSample) { samples.add(s) }
 
+    fun addMotion(m: MotionSample) { motion.add(m) }
+
     /** A copy for analysis on another thread. */
-    fun snapshot() = ScanSession(samples)
+    fun snapshot() = ScanSession(samples).also { it.motion.addAll(motion) }
 
     val elapsed: Double get() = if (samples.size > 1) samples.last().t - samples.first().t else 0.0
 
@@ -120,6 +135,10 @@ class ScanSession(initial: List<PPGSample> = emptyList()) {
             val last = samples.lastOrNull()
             if (last == null || !last.covered) return Guidance.COVER_LENS
             if (last.saturated > 0.5) return Guidance.PRESS_LIGHTER
+            if (currentRunSeconds > SETTLE_SECONDS + 2) {
+                val p = FeedQuality.latest(samples.takeLast(240), motion.takeLast(400))
+                if (p != null && p.cause != FeedCause.NONE && p.cause != FeedCause.NOISE) return Guidance.feed(p.cause)
+            }
             val recent = samples.takeLast(30)
             if (recent.size >= 15) {
                 val g = DoubleArray(recent.size) { recent[it].g }
@@ -143,6 +162,12 @@ class ScanSession(initial: List<PPGSample> = emptyList()) {
             if (best == null || d > best.duration) best = Run(start, i, d)
         }
         return best
+    }
+
+    /** Feed quality once a second over the longest covered run, in run seconds. */
+    fun feedSeries(): List<FeedQuality.Point> {
+        val run = longestRun() ?: return emptyList()
+        return FeedQuality.series(samples, motion, samples[run.start].t, samples[run.end].t)
     }
 
     class Window(val filtered: DoubleArray, val raw: DoubleArray, val start: Double)
@@ -215,7 +240,7 @@ class ScanSession(initial: List<PPGSample> = emptyList()) {
                         hr.bpm, BPEstimator.estimate(feats, model, age, sex, usual, calibration), q.score, q.level, hr.rhythm,
                         run.duration, hr.intervals, model.version, feats, raw.first, raw.second,
                         BPEstimator.baseline(model, age, sex, usual).first, BPEstimator.baseline(model, age, sex, usual).second,
-                        normalised(w.filtered), w.start + (w.filtered.size - 1) / fs,
+                        normalised(w.filtered), w.start + (w.filtered.size - 1) / fs, w.start, feedSeries(),
                     ),
                 )
             }

@@ -32,11 +32,16 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box as LayoutBox
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.layout.heightIn
+import nz.skull.vitalibre.core.BPDisplay
 import nz.skull.vitalibre.core.CalibrationPoint
 import nz.skull.vitalibre.core.ScanResult
 import nz.skull.vitalibre.core.ScanSession
@@ -50,8 +55,12 @@ fun MeasureScreen() {
     val prefs = env.prefs
     var orbBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var calibrating by remember { mutableStateOf(false) }
+    var showGuide by remember { mutableStateOf(false) }
     val idleOrigin = remember { SystemClock.uptimeMillis().toDouble() }
     val phase = m.phase
+
+    /** Why this scan's figure is not shown (an irregular pulse), or null to show it. No calibration gate on Android. */
+    fun hidden(r: ScanResult) = BPDisplay.hidden(r.rhythm, prefs.calibration, BPDisplay.Platform.ANDROID, "calibrated", System.currentTimeMillis() / 1000.0)
 
     val orb = when (phase) {
         is Measurer.Phase.Idle, is Measurer.Phase.Starting -> OrbInput(centre = "Start")
@@ -62,7 +71,7 @@ fun MeasureScreen() {
         )
         is Measurer.Phase.Analysing -> OrbInput(centre = "…")
         is Measurer.Phase.Result -> OrbInput(
-            centre = "${phase.result.heartRate.roundToInt()}", sub = phase.result.bp.text, caption = "bpm",
+            centre = "${phase.result.heartRate.roundToInt()}", sub = if (hidden(phase.result) == null) phase.result.bp.text else null, caption = "bpm",
             keptImage = m.keptImage, showsSweep = false,
         )
         is Measurer.Phase.Failed -> OrbInput(centre = "Retry", keptImage = m.keptImage)
@@ -71,6 +80,8 @@ fun MeasureScreen() {
     fun tapOrb() {
         when (phase) {
             is Measurer.Phase.Idle, is Measurer.Phase.Result, is Measurer.Phase.Failed -> {
+                // The first scan opens "Before you measure"; the person starts when they are ready.
+                if (!prefs.guideSeen) { prefs.markGuideSeen(); showGuide = true; return }
                 Sounds.play(Sounds.START)
                 env.activity.ensureCamera(
                     onGranted = { m.start(env.activity, p, if (prefs.age > 0) prefs.age else null, prefs.sex, prefs.usual, prefs.calibration, env.activity.simulate, prefs.workingFlash) { prefs.rememberFlash(it) } },
@@ -97,12 +108,13 @@ fun MeasureScreen() {
                 }, Modifier.fillMaxSize())
             },
         )
-        Column(Modifier.padding(top = 18.dp).height(80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(top = 18.dp).heightIn(min = 80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (phase) {
                 is Measurer.Phase.Scanning ->
                     Text(m.guidance.text, color = p.readout, style = Fonts.chakra(15.sp, Fonts.Face.MEDIUM), textAlign = TextAlign.Center)
-                is Measurer.Phase.Result -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val r = phase.result
+                is Measurer.Phase.Result -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val r = phase.result
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val kept = env.readings.readingForScan(m.scanId)?.saved == true
                     RingButton(if (kept) "Saved" else "Save", enabled = !kept) {
                         Sounds.play(Sounds.CLICK)
@@ -113,13 +125,18 @@ fun MeasureScreen() {
                         env.readings.setSaved(env.readings.file(r, m.scanId).id, true)
                     }
                     RingButton("Calibrate") { Sounds.play(Sounds.CLICK); calibrating = true }
-                    Box(Modifier.size(44.dp).clickable { env.activity.shareText(shareText(r.heartRate, r.bp.text)) }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(44.dp).clickable { env.activity.shareText(shareText(r.heartRate, if (hidden(r) == null) r.bp.text else null)) }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.Share, "Share as text", tint = p.clock, modifier = Modifier.size(20.dp))
                     }
                     Box(Modifier.size(44.dp).clickable { orbBounds?.let { env.activity.shareOrb(it) } }, contentAlignment = Alignment.Center) {
                         PictureGlyph(p.clock)
                     }
                 }
+                BPLines(r, hidden(r), env)
+                }
+                is Measurer.Phase.Idle ->
+                    Text("Before you measure", color = p.led, style = Fonts.chakra(13.sp, Fonts.Face.MEDIUM), textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.clickable { Sounds.play(Sounds.CLICK); showGuide = true })
                 is Measurer.Phase.Failed ->
                     Text(phase.message, color = p.led, style = Fonts.rajdhani(17.sp, semibold = true), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
                 else -> Unit
@@ -136,24 +153,43 @@ fun MeasureScreen() {
         }
     }
 
+    if (showGuide) ReadingGuideDialog { showGuide = false }
     val shown = phase as? Measurer.Phase.Result
     if (calibrating && shown != null) {
-        CalibrateDialog(Prefs.DEFAULT_SYSTOLIC, Prefs.DEFAULT_DIASTOLIC, onDismiss = { calibrating = false }) { cs, cd ->
-            addCuffReading(env, shown.result, cs, cd)
+        CalibrateDialog(Prefs.DEFAULT_SYSTOLIC, Prefs.DEFAULT_DIASTOLIC, onDismiss = { calibrating = false }) { cs, cd, cuff ->
+            addCuffReading(env, shown.result, cs, cd, cuff)
             calibrating = false
         }
     }
 }
 
 /** Pairs a cuff reading with the scan on screen and refreshes the shown estimate. */
-fun addCuffReading(env: AppEnv, result: ScanResult, cuffSystolic: Int, cuffDiastolic: Int) {
+fun addCuffReading(env: AppEnv, result: ScanResult, cuffSystolic: Int, cuffDiastolic: Int, cuffName: String? = null) {
+    env.prefs.rememberCuffName(cuffName ?: "")
     env.prefs.addCalibration(CalibrationPoint(result.rawSystolic, result.rawDiastolic, cuffSystolic.toDouble(), cuffDiastolic.toDouble(),
-        System.currentTimeMillis() / 1000.0, android.os.Build.MODEL, result.baseSystolic, result.baseDiastolic))
+        System.currentTimeMillis() / 1000.0, android.os.Build.MODEL, result.baseSystolic, result.baseDiastolic, cuffName?.trim()?.ifBlank { null }))
     env.measurer.recalibrate(env.prefs.calibration, if (env.prefs.age > 0) env.prefs.age else null, env.prefs.sex, env.prefs.usual)
 }
 
-private fun shareText(hr: Double, bp: String) =
-    "Heart rate ${hr.roundToInt()} bpm. Blood pressure estimate $bp mmHg. Estimates only, not a medical device. VitaLibre, " +
+/** Under the buttons: the figure's margin and caveat, or why there is no figure, and the reading's note. */
+@Composable
+private fun BPLines(r: ScanResult, hidden: nz.skull.vitalibre.core.BPHidden?, env: AppEnv) {
+    val p = LocalPalette.current
+    val note = env.readings.readingForScan(env.measurer.scanId)?.let { env.readings.noteText(it) }
+    Column(Modifier.padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (hidden != null) {
+            Text(hidden.line, color = p.readoutSecondary, style = Fonts.rajdhani(12.sp), textAlign = TextAlign.Center)
+        } else {
+            Text(BPPresentation.margin(env.prefs), color = p.readoutSecondary, style = Fonts.rajdhani(12.sp), textAlign = TextAlign.Center)
+            Text(Publisher.bpCaveat, color = p.readoutSecondary, style = Fonts.rajdhani(12.sp), textAlign = TextAlign.Center)
+        }
+        if (note != null) Text(note, color = p.led, style = Fonts.chakra(12.sp, Fonts.Face.MEDIUM), textAlign = TextAlign.Center)
+    }
+}
+
+private fun shareText(hr: Double, bp: String?) =
+    "Heart rate ${hr.roundToInt()} bpm." + (if (bp != null) " Blood pressure estimate $bp mmHg." else "") +
+        " Estimates only, not a medical device. VitaLibre, " +
         java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date()) + "."
 
 @Composable
@@ -186,8 +222,10 @@ private fun BookmarkGlyph(filled: Boolean, color: androidx.compose.ui.graphics.C
 
 /** Pairs a cuff reading with the scan on screen. */
 @Composable
-fun CalibrateDialog(startSystolic: Int, startDiastolic: Int, onDismiss: () -> Unit, onSave: (Int, Int) -> Unit) {
+fun CalibrateDialog(startSystolic: Int, startDiastolic: Int, onDismiss: () -> Unit, onSave: (Int, Int, String?) -> Unit) {
     val p = LocalPalette.current
+    val env = LocalEnv.current
+    var cuff by remember { mutableStateOf(env.prefs.lastCuffName) }
     var sys by remember { mutableStateOf(startSystolic.coerceIn(70, 250)) }
     var dia by remember { mutableStateOf(startDiastolic.coerceIn(40, 150)) }
     FullDialog(onDismiss) {
@@ -206,8 +244,13 @@ fun CalibrateDialog(startSystolic: Int, startDiastolic: Int, onDismiss: () -> Un
                     NumberWheel((40..150).toList(), dia) { dia = it }
                 }
             }
+            Box(Modifier.fillMaxWidth().panel(12).padding(12.dp)) {
+                if (cuff.isEmpty()) Text("Which cuff? (optional)", color = p.readoutSecondary, style = Fonts.rajdhani(16.sp))
+                BasicTextField(cuff, { cuff = it }, singleLine = true, textStyle = Fonts.rajdhani(16.sp).copy(color = p.readout),
+                    cursorBrush = SolidColor(p.led), modifier = Modifier.fillMaxWidth())
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                RingButton("Save", enabled = CalibrationPoint.isPlausible(sys.toDouble(), dia.toDouble())) { onSave(sys, dia) }
+                RingButton("Save", enabled = CalibrationPoint.isPlausible(sys.toDouble(), dia.toDouble())) { onSave(sys, dia, cuff.trim().ifBlank { null }) }
             }
         }
     }
@@ -233,13 +276,13 @@ private fun TodayFold(store: ReadingStore) {
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${r.heartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(30.sp))
+                Text("${r.displayHeartRate.roundToInt()}", color = p.readout, style = Fonts.rajdhani(30.sp))
                 Text(
                     "BPM", color = p.readoutSecondary, style = Fonts.chakra(10.sp, Fonts.Face.MEDIUM),
                     modifier = Modifier.padding(start = 6.dp).weight(1f),
                 )
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(r.bp.text, color = p.readout, style = Fonts.rajdhani(15.sp))
+                    Text(if (r.bpHidden == null) r.displayBP.text else "BP hidden", color = p.readout, style = Fonts.rajdhani(15.sp))
                     Text(df.format(java.util.Date(r.epochMillis)), color = p.readoutSecondary, style = Fonts.rajdhani(12.sp))
                 }
                 BookmarkGlyph(filled = r.saved, color = if (r.saved) p.led else p.readoutSecondary)

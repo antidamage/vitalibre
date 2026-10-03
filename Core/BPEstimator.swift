@@ -111,9 +111,22 @@ enum BPEstimator {
                        systolic: s, diastolic: d, calibrated: calibration.count > 0 || usual?.isPlausible == true)
     }
 
-    /// Features from the filtered signal and its accepted beats.
-    static func features(filtered y: [Double], beats: [Beat], hr: HeartRateEstimate, fs: Double) -> BPFeatures {
+    /// Features from the filtered signal and its accepted beats. `groups` and `kept` are for a reading
+    /// with stretches discarded: beat shapes are read within each kept group (an interval is never taken
+    /// across a cut) and skewness over the kept samples only.
+    static func features(filtered y: [Double], beats: [Beat], hr: HeartRateEstimate, fs: Double,
+                         groups: [[Beat]]? = nil, kept: [Double]? = nil) -> BPFeatures {
         let cv = Stats.std(hr.intervals) / max(1e-9, Stats.mean(hr.intervals))
+        var crest: [Double] = [], reflect: [Double] = []
+        for g in groups ?? [beats] {
+            let shapes = beatShapes(y, g, fs: fs)
+            crest += shapes.crest; reflect += shapes.reflect
+        }
+        return BPFeatures(heartRate: hr.bpm, intervalCV: cv, crestFraction: Stats.median(crest),
+                          skewness: Stats.skewness(kept ?? y), reflectionIndex: Stats.median(reflect))
+    }
+
+    private static func beatShapes(_ y: [Double], _ beats: [Beat], fs: Double) -> (crest: [Double], reflect: [Double]) {
         var crest: [Double] = [], reflect: [Double] = []
         for (i, b) in beats.enumerated() {
             let interval = i + 1 < beats.count ? beats[i + 1].time - b.time : (i > 0 ? b.time - beats[i - 1].time : 0)
@@ -131,8 +144,7 @@ enum BPEstimator {
             }
             reflect.append(max(0, second / b.amplitude))
         }
-        return BPFeatures(heartRate: hr.bpm, intervalCV: cv, crestFraction: Stats.median(crest),
-                          skewness: Stats.skewness(y), reflectionIndex: Stats.median(reflect))
+        return (crest, reflect)
     }
 }
 

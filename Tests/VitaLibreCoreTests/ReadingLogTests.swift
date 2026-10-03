@@ -13,7 +13,7 @@ final class ReadingLogTests: XCTestCase {
             features: BPFeatures(heartRate: heartRate, intervalCV: 0.05, crestFraction: 0.2,
                                  skewness: 0.1, reflectionIndex: 0.3),
             rawSystolic: 118, rawDiastolic: 74, baseSystolic: 120, baseDiastolic: 78,
-            trace: [0, 0.5, 0], traceEnd: 15)
+            trace: [0, 0.5, 0], traceEnd: 15, traceStart: 1, feed: [])
     }
 
     private func reading(level: QualityLevel, rhythm: Rhythm) -> Reading {

@@ -33,6 +33,7 @@ class Measurer(context: Context) {
     }
 
     val camera = CameraSource(context)
+    private val motion = MotionSource(context)
     /** Told the flash state after a good reading, or null after a failed one so it is worked out again. */
     private var flashLearned: (Boolean?) -> Unit = {}
     private val engine = ScanEngine({ handle(it) }, { camera.decisionPending })
@@ -65,6 +66,8 @@ class Measurer(context: Context) {
     var orbPx = 0
     var density = 1f
 
+    val bpModel get() = Publisher.model
+
     val isBusy get() = phase is Phase.Starting || phase is Phase.Scanning || phase is Phase.Analysing
 
     /** The identity of the scan in progress. A filed reading is keyed by it, so one scan lands in the log once. */
@@ -92,8 +95,12 @@ class Measurer(context: Context) {
             return
         }
         camera.onSample = { engine.sample(it) }
+        // The phone's own movement, on the camera's clock, so a shaking hand can be told from a bad picture.
+        motion.cameraEpochNanos = { camera.clockEpochNanos }
+        motion.onSample = { engine.motion(it) }
         camera.start(owner) { result ->
             result.onSuccess {
+                motion.start()
                 sweepOriginMs = SystemClock.uptimeMillis().toDouble()
                 phase = Phase.Scanning
                 Haptics.start()
@@ -114,6 +121,7 @@ class Measurer(context: Context) {
 
     private fun stopSources() {
         engine.stop()
+        motion.stop()
         camera.stop()
         simulated?.stop(); simulated = null
     }

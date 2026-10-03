@@ -93,16 +93,25 @@ object HeartRate {
     /** The interval spread at which a rhythm is called irregular: about three times ordinary respiratory variation (near 0.03). */
     const val IRREGULAR_VARIATION = 0.10
 
-    fun estimate(beats: List<Beat>): HeartRateResult {
+    fun estimate(beats: List<Beat>): HeartRateResult = estimateGroups(listOf(beats))
+
+    /**
+     * Intervals are taken only between beats of the same group, never across a gap: a group is a stretch
+     * of signal the user kept, and an interval spanning a discarded stretch would be false.
+     */
+    fun estimateGroups(groups: List<List<Beat>>): HeartRateResult {
         // Drop beats whose amplitude is far from the window's median: that is the detector's confidence
         // in the beat, not its timing.
-        val medAmp = Stats.median(DoubleArray(beats.size) { beats[it].amplitude })
-        val kept = beats.filter { medAmp > 0 && it.amplitude / medAmp in amplitudeBand }
+        val all = groups.flatten()
+        val medAmp = Stats.median(DoubleArray(all.size) { all[it].amplitude })
         val accepted = mutableListOf<Double>()
-        for (i in 1 until kept.size) {
-            val dt = kept[i].time - kept[i - 1].time
-            if (dt < MIN_INTERVAL || dt > MAX_INTERVAL) continue
-            accepted.add(dt)
+        for (group in groups) {
+            val kept = group.filter { medAmp > 0 && it.amplitude / medAmp in amplitudeBand }
+            for (i in 1 until kept.size) {
+                val dt = kept[i].time - kept[i - 1].time
+                if (dt < MIN_INTERVAL || dt > MAX_INTERVAL) continue
+                accepted.add(dt)
+            }
         }
         if (accepted.size < MIN_ACCEPTED) return HeartRateResult.Fail(HeartRateFailure.TooFewBeats(accepted.size))
         // Nothing from here on refuses a window for its rhythm, and nothing is dropped for sitting far

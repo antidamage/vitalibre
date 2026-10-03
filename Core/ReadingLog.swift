@@ -5,7 +5,25 @@ import Foundation
 /// numbers cannot tell a weak signal from an unsteady rhythm, so the app says both and
 /// diagnoses neither.
 enum ReadingNote {
+    /// Readings filed before the feed-quality index existed, which cannot say which of the two it was.
     static let lowQualityOrArrhythmia = "Low quality or arrhythmia"
+    /// The camera feed was poor. Says nothing about the heart.
+    static let lowSignal = "Low signal quality"
+    /// The feed was usable and the beats came unevenly. Never called arrhythmia: a fingertip camera cannot
+    /// tell AF from ectopic beats or motion.
+    static let irregular = "Irregular pulse"
+    static let irregularRepeated = "Irregular pulse, consider checking with a clinician"
+}
+
+/// The numbers for a reading with stretches left out. Held beside the scan's own numbers so that clearing
+/// the exclusions gives the original back exactly.
+struct EditedResult: Codable, Equatable {
+    var heartRate: Double
+    var rhythm: Rhythm
+    var bp: BPRange
+    var rawSystolic: Double
+    var rawDiastolic: Double
+    var usedSeconds: Double
 }
 
 /// One reading: what the technique measured, plus what the user has since done
@@ -38,15 +56,51 @@ struct Reading: Identifiable, Codable, Equatable {
     /// twice. Optional for the same reason: a file written before the log existed
     /// has none, and such a reading is only ever matched by its id.
     var scanID: UUID? = nil
+    /// The model's value before calibration, kept so a cuff reading can be paired with this scan and so a
+    /// figure that was hidden when it was taken is still on file for validation.
+    var rawSystolic: Double? = nil
+    var rawDiastolic: Double? = nil
+    /// Whether the blood-pressure figure was shown when the scan was taken (`BPDisplay`). nil for a reading
+    /// filed before this existed, which counts as hidden on iOS.
+    var bpShown: Bool? = nil
+    /// Run seconds of the first trace sample, so `feedQuality` and `excluded` line up with the graph.
+    var traceStart: Double? = nil
+    /// Feed quality once a second from the second after cover (`FeedQuality.series`), two decimals, with the
+    /// cause of each (`FeedCause` raw values).
+    var feedQuality: [Double]? = nil
+    var feedCauses: [String]? = nil
+    /// Stretches the user has marked as not to be used, and the numbers without them.
+    var excluded: [ExcludedRange]? = nil
+    var edited: EditedResult? = nil
 
     var isSaved: Bool { saved ?? true }
 
-    /// Whether the rhythm swung during the scan.
-    var isIrregular: Bool { rhythm == .irregular }
+    /// Whether the rhythm swung during the scan, counting any stretches the user left out.
+    var isIrregular: Bool { displayRhythm == .irregular }
+
+    var displayHeartRate: Double { edited?.heartRate ?? heartRate }
+    var displayRhythm: Rhythm? { edited?.rhythm ?? rhythm }
+    var displayBP: BPRange { edited?.bp ?? bp }
+
+    /// Seconds of the run in use, when stretches are left out.
+    var usedSeconds: Double { edited?.usedSeconds ?? duration }
+
+    var feedMean: Double? {
+        guard let f = feedQuality, !f.isEmpty else { return nil }
+        return Stats.mean(f)
+    }
 
     /// The one note a reading can carry, or nothing. Marked, not refused: the reading is
-    /// the user's either way.
-    var note: String? { (level == .poor || isIrregular) ? ReadingNote.lowQualityOrArrhythmia : nil }
+    /// the user's either way. With a feed series the two causes are told apart: a poor feed is
+    /// "low signal quality" and says nothing about the heart; a usable feed with uneven beats is an
+    /// "irregular pulse". A reading from before the series cannot tell, and keeps the old phrase.
+    var note: String? {
+        if let m = feedMean {
+            if FeedQuality.level(m) == .poor { return ReadingNote.lowSignal }
+            return isIrregular ? ReadingNote.irregular : nil
+        }
+        return (level == .poor || isIrregular) ? ReadingNote.lowQualityOrArrhythmia : nil
+    }
 }
 
 /// The user's readings, newest first, and the rules a finished scan runs into.
@@ -86,21 +140,53 @@ struct ReadingLog: Equatable {
     /// Measure, a Save, or a recalibration lands on the one reading that scan
     /// already has and refreshes its estimate, instead of adding a second copy.
     @discardableResult
-    mutating func file(_ result: ScanResult, scanID: UUID, at date: Date = Date()) -> Reading {
+    mutating func file(_ result: ScanResult, scanID: UUID, bpShown: Bool? = nil, at date: Date = Date()) -> Reading {
         if let i = readings.firstIndex(where: { $0.scanID == scanID }) {
             readings[i].heartRate = result.heartRate
             readings[i].bp = result.bp
             readings[i].quality = result.quality
             readings[i].level = result.level
             readings[i].rhythm = result.rhythm
+            // A recalibration re-derives the figure and may now show it; it never hides what was shown.
+            if let bpShown { readings[i].bpShown = (readings[i].bpShown ?? false) || bpShown }
             return readings[i]
         }
         let r = Reading(date: date, heartRate: result.heartRate, bp: result.bp, quality: result.quality,
                         level: result.level, duration: result.duration, modelVersion: result.modelVersion,
                         trace: Self.stored(result.trace), rhythm: result.rhythm,
-                        saved: false, scanID: scanID)
+                        saved: false, scanID: scanID,
+                        rawSystolic: result.rawSystolic, rawDiastolic: result.rawDiastolic, bpShown: bpShown,
+                        traceStart: result.traceStart,
+                        feedQuality: result.feed.map { ($0.value * 100).rounded() / 100 },
+                        feedCauses: result.feed.map { $0.cause.rawValue })
         readings.insert(r, at: 0)
         return r
+    }
+
+    /// Records the user's exclusions and the numbers recomputed without them. Empty ranges clear both, which
+    /// gives the scan's own numbers back.
+    mutating func setExclusions(_ id: UUID, _ ranges: [ExcludedRange], outcome: ReadingEdit.Outcome?) {
+        guard let i = readings.firstIndex(where: { $0.id == id }) else { return }
+        guard !ranges.isEmpty, let outcome else { readings[i].excluded = nil; readings[i].edited = nil; return }
+        readings[i].excluded = ranges
+        readings[i].edited = EditedResult(heartRate: outcome.heartRate, rhythm: outcome.rhythm, bp: outcome.bp,
+                                          rawSystolic: outcome.rawSystolic, rawDiastolic: outcome.rawDiastolic,
+                                          usedSeconds: outcome.usedSeconds)
+    }
+
+    /// Whether this reading is the second irregular pulse among the last three scans in 30 minutes. The
+    /// wording escalates only then.
+    func irregularRepeated(for reading: Reading) -> Bool {
+        guard reading.isIrregular else { return false }
+        let recent = readings.filter { $0.date <= reading.date && reading.date.timeIntervalSince($0.date) <= 1800 }
+            .sorted { $0.date > $1.date }.prefix(3)
+        return recent.filter { $0.isIrregular }.count >= 2
+    }
+
+    /// The note as shown, with the escalation applied.
+    func noteText(for reading: Reading) -> String? {
+        guard let note = reading.note else { return nil }
+        return note == ReadingNote.irregular && irregularRepeated(for: reading) ? ReadingNote.irregularRepeated : note
     }
 
     /// The graph as it is kept: three decimals, which is finer than a phone screen can
@@ -152,7 +238,7 @@ struct ReadingLog: Equatable {
     }
 
     /// The kept readings, oldest first, as plain text one reading per line.
-    func exportText() -> String {
+    func exportText(showBP: (Reading) -> Bool = { _ in true }) -> String {
         let kept = savedReadings.sorted { $0.date < $1.date }
         let stamp = DateFormatter(); stamp.dateFormat = "yyyy-MM-dd HH:mm"
         var lines = ["VitaLibre readings (\(kept.count))",
@@ -160,8 +246,11 @@ struct ReadingLog: Equatable {
         for r in kept {
             // The note travels with the reading: a shared line that dropped it would be
             // quieter than the app, and the caveat is the part that matters.
-            var line = "\(stamp.string(from: r.date))  HR \(Int(r.heartRate.rounded()))  BP \(r.bp.text)  quality \(r.level.rawValue)"
-            if let note = r.note { line += "  \(note)" }
+            var line = "\(stamp.string(from: r.date))  HR \(Int(r.displayHeartRate.rounded()))"
+            if showBP(r) { line += "  BP \(r.displayBP.text)" }
+            line += "  quality \(r.level.rawValue)"
+            if let note = noteText(for: r) { line += "  \(note)" }
+            if let used = r.edited?.usedSeconds { line += "  \(Int(used.rounded())) of \(Int(r.duration.rounded())) s used" }
             if r.starred { line += "  starred" }
             lines.append(line)
         }

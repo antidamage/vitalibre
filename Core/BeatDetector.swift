@@ -81,16 +81,22 @@ enum HeartRate {
     /// genuinely swings gives.
     static let irregularVariation = 0.10
 
-    static func estimate(beats: [Beat]) -> Result<HeartRateEstimate, HeartRateFailure> {
+    static func estimate(beats: [Beat]) -> Result<HeartRateEstimate, HeartRateFailure> { estimate(groups: [beats]) }
+
+    /// Intervals are taken only between beats of the same group, never across a gap: a group is a
+    /// stretch of signal the user kept, and an interval spanning a discarded stretch would be false.
+    static func estimate(groups: [[Beat]]) -> Result<HeartRateEstimate, HeartRateFailure> {
         // Drop beats whose amplitude is far from the window's median: that is the
         // detector's confidence in the beat, not its timing.
-        let medAmp = Stats.median(beats.map(\.amplitude))
-        let kept = beats.filter { medAmp > 0 && amplitudeBand.contains($0.amplitude / medAmp) }
+        let medAmp = Stats.median(groups.flatMap { $0 }.map(\.amplitude))
         var accepted: [Double] = []
-        for i in 1..<max(1, kept.count) {
-            let dt = kept[i].time - kept[i - 1].time
-            guard dt >= minInterval, dt <= maxInterval else { continue }
-            accepted.append(dt)
+        for group in groups {
+            let kept = group.filter { medAmp > 0 && amplitudeBand.contains($0.amplitude / medAmp) }
+            for i in 1..<max(1, kept.count) {
+                let dt = kept[i].time - kept[i - 1].time
+                guard dt >= minInterval, dt <= maxInterval else { continue }
+                accepted.append(dt)
+            }
         }
         guard accepted.count >= minAccepted else { return .failure(.tooFewBeats(accepted.count)) }
         // Nothing from here on refuses a window for its rhythm, and nothing is dropped for

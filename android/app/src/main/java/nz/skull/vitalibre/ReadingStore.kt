@@ -4,7 +4,13 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import nz.skull.vitalibre.core.BPCalibration
+import nz.skull.vitalibre.core.BPDisplay
 import nz.skull.vitalibre.core.BPRange
+import nz.skull.vitalibre.core.ExcludedRange
+import nz.skull.vitalibre.core.ExportReading
+import nz.skull.vitalibre.core.ReadingEdit
+import nz.skull.vitalibre.core.ValidationExport
 import nz.skull.vitalibre.core.QualityLevel
 import nz.skull.vitalibre.core.ReadingNote
 import nz.skull.vitalibre.core.Rhythm
@@ -17,6 +23,12 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+
+/** The numbers for a reading with stretches left out, held beside the scan's own so clearing gives the original back. */
+data class EditedResult(
+    val heartRate: Double, val rhythm: Rhythm, val bp: BPRange,
+    val rawSystolic: Double, val rawDiastolic: Double, val usedSeconds: Double,
+)
 
 data class Reading(
     val id: String = UUID.randomUUID().toString(),
@@ -36,10 +48,33 @@ data class Reading(
     val saved: Boolean = true,
     /** The scan this reading came from, which is what stops one scan being filed twice. Absent in a file written before the log existed. */
     val scanId: String? = null,
+    /** The model's value before calibration, kept so a cuff reading can be paired with this scan. */
+    val rawSystolic: Double? = null,
+    val rawDiastolic: Double? = null,
+    /** Whether the figure was shown when the scan was taken. Android files true; absent in an older file. */
+    val bpShown: Boolean? = null,
+    /** Run seconds of the first trace sample, so [feedQuality] and [excluded] line up with the graph. */
+    val traceStart: Double? = null,
+    /** Feed quality once a second from the second after cover, two decimals, with the cause of each. */
+    val feedQuality: List<Double>? = null,
+    val feedCauses: List<String>? = null,
+    /** Stretches the user has left out, and the numbers without them. */
+    val excluded: List<ExcludedRange>? = null,
+    val edited: EditedResult? = null,
 ) {
+    val displayHeartRate: Double get() = edited?.heartRate ?: heartRate
+    val displayRhythm: Rhythm? get() = edited?.rhythm ?: rhythm
+    val displayBP: BPRange get() = edited?.bp ?: bp
+    val isIrregular: Boolean get() = displayRhythm == Rhythm.IRREGULAR
+    /** Seconds of the run in use, when stretches are left out. */
+    val usedSeconds: Double get() = edited?.usedSeconds ?: duration
+    val feedMean: Double? get() = feedQuality?.takeIf { it.isNotEmpty() }?.average()
+
+    /** Android shows a figure unless the pulse is irregular (no calibration gate). */
+    val bpHidden get() = BPDisplay.hidden(displayRhythm, BPCalibration(), BPDisplay.Platform.ANDROID, "calibrated", epochMillis / 1000.0)
+
     /** The one note a reading can carry, or nothing. Marked, not refused: the reading is the user's either way. */
-    val note: String?
-        get() = if (level == QualityLevel.POOR || rhythm == Rhythm.IRREGULAR) ReadingNote.LOW_QUALITY_OR_ARRHYTHMIA else null
+    val note: String? get() = ReadingNote.note(feedMean, displayRhythm, level)
 }
 
 /**
@@ -70,6 +105,20 @@ class ReadingStore(context: Context) {
                     scanId = o.optString("scan").ifBlank { null },
                     trace = o.optJSONArray("trace")?.let { a -> (0 until a.length()).map { a.getDouble(it) } },
                     rhythm = o.optString("rhythm").ifBlank { null }?.let { Rhythm.valueOf(it) },
+                    rawSystolic = o.optDouble("rs", Double.NaN).takeIf { !it.isNaN() },
+                    rawDiastolic = o.optDouble("rd", Double.NaN).takeIf { !it.isNaN() },
+                    bpShown = if (o.has("bps")) o.getBoolean("bps") else null,
+                    traceStart = o.optDouble("ts", Double.NaN).takeIf { !it.isNaN() },
+                    feedQuality = o.optJSONArray("fq")?.let { a -> (0 until a.length()).map { a.getDouble(it) } },
+                    feedCauses = o.optJSONArray("fc")?.let { a -> (0 until a.length()).map { a.getString(it) } },
+                    excluded = o.optJSONArray("ex")?.let { a -> (0 until a.length()).map { val p = a.getJSONArray(it); ExcludedRange(p.getDouble(0), p.getDouble(1)) } },
+                    edited = o.optJSONObject("ed")?.let { e ->
+                        EditedResult(
+                            e.getDouble("hr"), Rhythm.valueOf(e.getString("rhythm")),
+                            BPRange(e.getInt("sl"), e.getInt("sh"), e.getInt("dl"), e.getInt("dh"), e.getInt("s"), e.getInt("d"), e.optBoolean("cal", false)),
+                            e.getDouble("rs"), e.getDouble("rd"), e.getDouble("used"),
+                        )
+                    },
                 )
             }.sortedByDescending { it.epochMillis }
         } catch (e: Exception) {
@@ -93,6 +142,19 @@ class ReadingStore(context: Context) {
             r.scanId?.let { o.put("scan", it) }
             r.trace?.let { t -> o.put("trace", JSONArray().apply { t.forEach { v -> put(v) } }) }
             r.rhythm?.let { o.put("rhythm", it.name) }
+            r.rawSystolic?.let { o.put("rs", it) }
+            r.rawDiastolic?.let { o.put("rd", it) }
+            r.bpShown?.let { o.put("bps", it) }
+            r.traceStart?.let { o.put("ts", it) }
+            r.feedQuality?.let { f -> o.put("fq", JSONArray().apply { f.forEach { v -> put(v) } }) }
+            r.feedCauses?.let { f -> o.put("fc", JSONArray().apply { f.forEach { v -> put(v) } }) }
+            r.excluded?.let { ex -> o.put("ex", JSONArray().apply { ex.forEach { x -> put(JSONArray().put(x.start).put(x.end)) } }) }
+            r.edited?.let { e ->
+                o.put("ed", JSONObject().put("hr", e.heartRate).put("rhythm", e.rhythm.name)
+                    .put("sl", e.bp.systolicLow).put("sh", e.bp.systolicHigh).put("dl", e.bp.diastolicLow).put("dh", e.bp.diastolicHigh)
+                    .put("s", e.bp.systolic).put("d", e.bp.diastolic).put("cal", e.bp.calibrated)
+                    .put("rs", e.rawSystolic).put("rd", e.rawDiastolic).put("used", e.usedSeconds))
+            }
             arr.put(o)
         }
         val tmp = File(file.parentFile, "readings.json.tmp")
@@ -130,6 +192,8 @@ class ReadingStore(context: Context) {
             val refreshed = existing.copy(
                 heartRate = result.heartRate, bp = result.bp, quality = result.quality, level = result.level,
                 rhythm = result.rhythm,
+                // A recalibration re-derives the figure; the shown flag is never taken back.
+                bpShown = true,
             )
             readings = readings.map { if (it.id == existing.id) refreshed else it }
             save()
@@ -139,6 +203,10 @@ class ReadingStore(context: Context) {
             epochMillis = System.currentTimeMillis(), heartRate = result.heartRate, bp = result.bp, quality = result.quality,
             level = result.level, duration = result.duration, modelVersion = result.modelVersion, saved = false, scanId = scanId,
             trace = stored(result.trace), rhythm = result.rhythm,
+            rawSystolic = result.rawSystolic, rawDiastolic = result.rawDiastolic, bpShown = true,
+            traceStart = result.traceStart,
+            feedQuality = result.feed.map { Math.round(it.value * 100) / 100.0 },
+            feedCauses = result.feed.map { it.cause.raw },
         )
         readings = listOf(r) + readings
         save()
@@ -173,8 +241,32 @@ class ReadingStore(context: Context) {
         save()
     }
 
+    /**
+     * Records the user's exclusions and the numbers recomputed without them. Empty ranges, or no outcome, clear
+     * both, which gives the scan's own numbers back.
+     */
+    fun setExclusions(id: String, ranges: List<ExcludedRange>, outcome: ReadingEdit.Outcome?) {
+        readings = readings.map {
+            if (it.id != id) it
+            else if (ranges.isEmpty() || outcome == null) it.copy(excluded = null, edited = null)
+            else it.copy(
+                excluded = ranges,
+                edited = EditedResult(outcome.heartRate, outcome.rhythm, outcome.bp, outcome.rawSystolic, outcome.rawDiastolic, outcome.usedSeconds),
+            )
+        }
+        save()
+    }
+
+    private fun scans() = readings.map { ReadingNote.Scan(it.epochMillis, it.isIrregular) }
+
+    /** Whether this is the second irregular pulse among the last three scans within 30 minutes. */
+    fun irregularRepeated(r: Reading) = ReadingNote.irregularRepeated(ReadingNote.Scan(r.epochMillis, r.isIrregular), scans())
+
+    /** The note as shown, with the escalation applied. */
+    fun noteText(r: Reading): String? = ReadingNote.text(r.note, r.note == ReadingNote.IRREGULAR && irregularRepeated(r))
+
     /** The kept readings, oldest first, as plain text one reading per line. */
-    fun exportText(): String {
+    fun exportText(showBP: (Reading) -> Boolean = { it.bpHidden == null }): String {
         val kept = savedReadings.sortedBy { it.epochMillis }
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
         val lines = mutableListOf(
@@ -186,12 +278,30 @@ class ReadingStore(context: Context) {
             // The note travels with the reading: a shared line that dropped it would be quieter than
             // the app, and the caveat is the part that matters.
             val line = buildString {
-                append("${stamp.format(Date(r.epochMillis))}  HR ${Math.round(r.heartRate)}  BP ${r.bp.text}  quality ${r.level.label}")
-                r.note?.let { append("  $it") }
+                append("${stamp.format(Date(r.epochMillis))}  HR ${Math.round(r.displayHeartRate)}")
+                if (showBP(r)) append("  BP ${r.displayBP.text}")
+                append("  quality ${r.level.label}")
+                noteText(r)?.let { append("  $it") }
+                r.edited?.let { append("  ${Math.round(it.usedSeconds)} of ${Math.round(r.duration)} s used") }
                 if (r.starred) append("  starred")
             }
             lines.add(line)
         }
         return lines.joinToString("\n")
     }
+
+    /** Every cuff comparison and every reading's raw model values, as CSV (same columns as iOS). */
+    fun validationCsv(calibration: BPCalibration, appVersion: String): String =
+        ValidationExport.csv(
+            calibration,
+            savedReadings.map { r ->
+                ExportReading(
+                    r.epochMillis / 1000.0, r.modelVersion, r.displayHeartRate, r.displayRhythm,
+                    r.edited?.rawSystolic ?: r.rawSystolic, r.edited?.rawDiastolic ?: r.rawDiastolic,
+                    r.displayBP.systolic, r.displayBP.diastolic, r.bpHidden == null,
+                    r.duration, r.usedSeconds, r.feedQuality, r.feedCauses, r.note, r.excluded,
+                )
+            },
+            appVersion, Publisher.model.version,
+        )
 }

@@ -13,6 +13,8 @@ data class CalibrationPoint(
     /** The starting point (age prior or typical resting pressure) the raw value was built on; null for older points, which used the model's own base. */
     val baseSystolic: Double? = null,
     val baseDiastolic: Double? = null,
+    /** Which cuff the reading came from, free text, so a comparison can name its reference. */
+    val cuffName: String? = null,
 ) {
     companion object {
         fun isPlausible(systolic: Double, diastolic: Double): Boolean =
@@ -26,6 +28,20 @@ data class CalibrationPoint(
  */
 data class BPCalibration(val points: List<CalibrationPoint> = emptyList()) {
     val count get() = points.size
+
+    /** Seconds since the epoch of the newest paired cuff reading, or null with none. */
+    val newestEpochSeconds: Double? get() = points.maxOfOrNull { it.epochSeconds }
+
+    /**
+     * A calibration is current while its newest paired cuff reading is at most [validDays] old. Only a
+     * paired reading counts: it is the only thing that measures the model against a reference.
+     */
+    fun isCurrent(nowEpochSeconds: Double, validDays: Int = DEFAULT_VALID_DAYS): Boolean {
+        val d = newestEpochSeconds ?: return false
+        return nowEpochSeconds - d <= validDays * 86400.0
+    }
+
+    fun expiryEpochSeconds(validDays: Int = DEFAULT_VALID_DAYS): Double? = newestEpochSeconds?.plus(validDays * 86400.0)
 
     /**
      * What each pairing says the estimate should shift by, measured against the CURRENT starting point. A pairing
@@ -42,6 +58,13 @@ data class BPCalibration(val points: List<CalibrationPoint> = emptyList()) {
         if (points.isEmpty()) return 0.0 to 0.0
         val g = gaps(base, legacy)
         return max(-MAX_OFFSET, min(MAX_OFFSET, g.first.average())) to max(-MAX_OFFSET, min(MAX_OFFSET, g.second.average()))
+    }
+
+    /** 1.64 x the residual SD against this person's cuff, or null before three pairings. Not capped or floored. */
+    fun cuffSpread(base: Pair<Double, Double>, legacy: Pair<Double, Double>): Pair<Double, Double>? {
+        if (points.size < MIN_POINTS_FOR_NARROWING) return null
+        val g = gaps(base, legacy)
+        return 1.64 * Stats.std(g.first) to 1.64 * Stats.std(g.second)
     }
 
     /** Half-widths for the displayed range. `fallback` is the model's population figure. */
@@ -65,5 +88,8 @@ data class BPCalibration(val points: List<CalibrationPoint> = emptyList()) {
         const val MIN_HALF_WIDTH_SYSTOLIC = 6.0
         const val MIN_HALF_WIDTH_DIASTOLIC = 4.0
         const val MAX_POINTS = 30
+
+        /** How long a paired cuff reading keeps blood pressure on display (iOS). `policy.json` can override it. */
+        const val DEFAULT_VALID_DAYS = 30
     }
 }

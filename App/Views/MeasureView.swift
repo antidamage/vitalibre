@@ -10,6 +10,7 @@ struct MeasureView: View {
     @State private var sharedImage: SharedImage?
     @State private var idleOrigin = Date()
     @State private var calibrating = false
+    @State private var showGuide = false
     /// Whether the fold is open: the line's own state, and what a pull changes.
     @State private var foldOpen = false
     @State private var fold = FoldCommands()
@@ -36,6 +37,9 @@ struct MeasureView: View {
         .onChange(of: readings.todaysReadings.isEmpty) { _, empty in
             // Nothing left past the line: the fold has nothing to guard, so it shuts.
             if empty { fold.close() }
+        }
+        .sheet(isPresented: $showGuide) {
+            ReadingGuideSheet().environment(\.palette, palette)
         }
         .sheet(isPresented: $calibrating) {
             if case .result(let r) = measurer.phase {
@@ -98,8 +102,10 @@ struct MeasureView: View {
         case .idle, .starting:
             return OrbInput(centre: "Start")
         case .scanning:
+            // The running estimate is shown only when a result of this kind would be (a calibration is current).
             var input = OrbInput(centre: measurer.liveHeartRate.map { "\(Int($0.rounded()))" } ?? "",
-                                 sub: measurer.liveBP?.text, caption: measurer.liveHeartRate == nil ? nil : "bpm")
+                                 sub: BPPresentation.eligible(prefs) ? measurer.liveBP?.text : nil,
+                                 caption: measurer.liveHeartRate == nil ? nil : "bpm")
             input.lastBeat = measurer.lastBeat
             input.showsCamera = measurer.usingCamera
             input.scanning = true
@@ -110,7 +116,7 @@ struct MeasureView: View {
         case .analysing:
             return OrbInput(centre: "…")
         case .result(let r):
-            var input = OrbInput(centre: "\(Int(r.heartRate.rounded()))", sub: r.bp.text, caption: "bpm")
+            var input = OrbInput(centre: "\(Int(r.heartRate.rounded()))", sub: hidden(r) == nil ? r.bp.text : nil, caption: "bpm")
             input.keptTrace = measurer.keptTrace; input.keptTraceEnd = measurer.keptTraceEnd
             input.showsSweep = false
             return input
@@ -124,6 +130,8 @@ struct MeasureView: View {
     private func tapOrb() {
         switch measurer.phase {
         case .idle, .result, .failed:
+            // The first scan opens "Before you measure"; the user starts when they are ready.
+            if !prefs.guideSeen { prefs.guideSeen = true; showGuide = true; return }
             Sounds.play(Sounds.start)
             // The flash the reading settles on becomes the state the next reading starts from.
             measurer.onFlashLearned = { used in prefs.workingFlash = used }
@@ -160,11 +168,11 @@ struct MeasureView: View {
             readings.toggleSaved(r.id)
         } label: {
             HStack(alignment: .center, spacing: 8) {
-                Text("\(Int(r.heartRate.rounded()))").font(.rajdhani(30)).monospacedDigit().foregroundStyle(palette.readout)
+                Text("\(Int(r.displayHeartRate.rounded()))").font(.rajdhani(30)).monospacedDigit().foregroundStyle(palette.readout)
                 Text("BPM").font(.chakra(10)).foregroundStyle(palette.readoutSecondary)
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(r.bp.text).font(.rajdhani(15)).foregroundStyle(palette.readout)
+                    Text(r.bpHidden(prefs) == nil ? r.displayBP.text : "BP hidden").font(.rajdhani(15)).foregroundStyle(palette.readout)
                     Text(r.date.formatted(date: .omitted, time: .shortened))
                         .font(.rajdhani(12)).foregroundStyle(palette.readoutSecondary)
                 }
@@ -180,7 +188,7 @@ struct MeasureView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressStyle())
-        .accessibilityLabel("\(Int(r.heartRate.rounded())) bpm, \(r.bp.text), \(r.date.formatted(date: .omitted, time: .shortened))\(r.isSaved ? ", kept" : "")")
+        .accessibilityLabel("\(Int(r.displayHeartRate.rounded())) bpm, \(r.bpHidden(prefs) == nil ? r.displayBP.text : "blood pressure hidden"), \(r.date.formatted(date: .omitted, time: .shortened))\(r.isSaved ? ", kept" : "")")
     }
 
     // MARK: Under the orb
@@ -190,8 +198,17 @@ struct MeasureView: View {
             switch measurer.phase {
             case .scanning:
                 Text(measurer.guidance.text).font(.chakra(15, .medium)).foregroundStyle(palette.readout)
+            case .idle:
+                Button {
+                    DialClick.shared.play()
+                    showGuide = true
+                } label: {
+                    Text("Before you measure").font(.chakra(13, .medium)).foregroundStyle(palette.led).underline()
+                }
+                .accessibilityHint("How to take a good reading")
             case .result(let r):
                 actions(r)
+                bpLines(r)
             case .failed(let message):
                 Text(message)
                     .font(.rajdhani(17, semibold: true)).foregroundStyle(palette.led)
@@ -232,8 +249,30 @@ struct MeasureView: View {
         }
     }
 
+    private func hidden(_ r: ScanResult) -> BPHidden? {
+        BPDisplay.hidden(rhythm: r.rhythm, calibration: prefs.calibration, platform: .ios, mode: BPPresentation.mode,
+                         validDays: BPPresentation.validDays)
+    }
+
+    /// Under the buttons: the figure's margin and caveat, or why there is no figure, and the reading's note.
+    private func bpLines(_ r: ScanResult) -> some View {
+        let note = readings.reading(forScan: measurer.scanID).flatMap { readings.noteText(for: $0) }
+        return VStack(spacing: 4) {
+            if let h = hidden(r) {
+                Text(h.line)
+            } else {
+                Text(BPPresentation.margin(prefs, model: measurer.bpModel))
+                Text(Publisher.policy.bpCaveat)
+            }
+            if let note { Text(note).font(.chakra(12, .medium)).foregroundStyle(palette.led) }
+        }
+        .font(.rajdhani(12)).foregroundStyle(palette.readoutSecondary)
+        .multilineTextAlignment(.center).padding(.horizontal, 28)
+    }
+
     private func shareText(_ r: ScanResult) -> String {
-        "Heart rate \(Int(r.heartRate.rounded())) bpm. Blood pressure estimate \(r.bp.text) mmHg. "
+        let bp = hidden(r) == nil ? " Blood pressure estimate \(r.bp.text) mmHg." : ""
+        return "Heart rate \(Int(r.heartRate.rounded())) bpm.\(bp) "
             + "Estimates only, not a medical device. VitaLibre, \(Date().formatted(date: .abbreviated, time: .shortened))."
     }
 
@@ -267,6 +306,8 @@ struct CalibrateSheet: View {
     let onSave: (CalibrationPoint) -> Void
     @State private var systolic = 120
     @State private var diastolic = 80
+    /// Which cuff the numbers came from, remembered between calibrations so it is typed once.
+    @AppStorage("lastCuffName") private var cuffName = ""
 
     var body: some View {
         ZStack {
@@ -281,11 +322,15 @@ struct CalibrateSheet: View {
                     picker("Systolic", $systolic, 70...250)
                     picker("Diastolic", $diastolic, 40...150)
                 }
+                TextField("Which cuff? (optional)", text: $cuffName)
+                    .font(.rajdhani(16)).foregroundStyle(palette.readout)
+                    .padding(12).panel(radius: 12)
                 RingButton(title: "Save", disabled: !CalibrationPoint.isPlausible(systolic: Double(systolic), diastolic: Double(diastolic))) {
                     onSave(CalibrationPoint(rawSystolic: result.rawSystolic, rawDiastolic: result.rawDiastolic,
                                             cuffSystolic: Double(systolic), cuffDiastolic: Double(diastolic), date: Date(),
                                             device: DeviceInfo.identifier,
-                                            baseSystolic: result.baseSystolic, baseDiastolic: result.baseDiastolic))
+                                            baseSystolic: result.baseSystolic, baseDiastolic: result.baseDiastolic,
+                                            cuffName: cuffName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : cuffName))
                     dismiss()
                 }
                 Spacer()

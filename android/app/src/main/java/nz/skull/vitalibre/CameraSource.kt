@@ -2,12 +2,15 @@ package nz.skull.vitalibre
 
 import android.content.Context
 import android.graphics.Color
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CaptureRequest
+import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
 import android.util.Size
 import androidx.annotation.OptIn
 import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
@@ -64,6 +67,27 @@ class CameraSource(private val context: Context) {
     private var camera: Camera? = null
 
     @Volatile private var wantTorch = false
+
+    /** When the camera last did something to the picture; a sample within half a second of it is flagged as an event. */
+    @Volatile private var lastEventT = -10.0
+    @Volatile private var latestT = 0.0
+
+    /**
+     * The scan's clock zero (the first frame) on the SystemClock.elapsedRealtimeNanos clock, which is what sensor
+     * events are stamped with, so motion samples can be put on the camera's clock. null until known.
+     *
+     * Assumption: CameraX's ImageInfo.timestamp is the camera sensor timestamp. When the sensor reports
+     * SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME it is already on the elapsedRealtime clock and is used as is.
+     * Otherwise (UNKNOWN, a free-running sensor clock) the offset is estimated from the first 30 frames as
+     * the smallest (frame arrival elapsedRealtimeNanos minus sensor timestamp): the frame with the least
+     * delivery latency, so the estimate is early by at most that latency (a few ms to a few tens of ms,
+     * small against 100 Hz motion and the 3 s windows it feeds). The epoch is not published until then.
+     */
+    @Volatile var clockEpochNanos: Long? = null
+        private set
+    private var realtimeSource = false
+    private var offsetFrames = 0
+    private var minOffset = Long.MAX_VALUE
     private var t0 = -1L
     private var locked = false
     private var coverStart = -1.0
@@ -121,10 +145,13 @@ class CameraSource(private val context: Context) {
                     .build()
                 analysis.setAnalyzer(executor, ::analyze)
                 p.unbindAll()
-                t0 = -1L; locked = false; coverStart = -1.0; lastCovered = -10.0; lastTorchCheck = -10.0
+                t0 = -1L; clockEpochNanos = null; offsetFrames = 0; minOffset = Long.MAX_VALUE; lastEventT = -10.0; latestT = 0.0; locked = false; coverStart = -1.0; lastCovered = -10.0; lastTorchCheck = -10.0
                 evIndex = 0; lastEv = -10.0; stableSince = -1.0; light = Light.OFF; startedAt = -1.0; coverSince = -1.0; trialAt = -1.0; qualityOff = 0.0; times.clear(); greens.clear(); quality = 0.0; lastQualityAt = -10.0; decisionPending = false; darkSince = -1.0
                 val cam = p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
                 camera = cam
+                realtimeSource = try {
+                    timestampIsRealtime(cam)
+                } catch (e: Exception) { false }
                 // With no memory the flash starts OFF and is switched on only if the signal turns out too flat (see
                 // regulateLight). A remembered state is used straight away and not re-tested.
                 when (remembered) {
@@ -140,6 +167,11 @@ class CameraSource(private val context: Context) {
             }
         }, ContextCompat.getMainExecutor(context))
     }
+
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun timestampIsRealtime(cam: Camera): Boolean =
+        Camera2CameraInfo.from(cam.cameraInfo).getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE) ==
+            CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
 
     fun stop() {
         onSample = null
@@ -161,6 +193,7 @@ class CameraSource(private val context: Context) {
             .setCaptureRequestOption(CaptureRequest.CONTROL_AWB_LOCK, lock)
             .build()
         Camera2CameraControl.from(c.cameraControl).setCaptureRequestOptions(opts)
+        if (locked != lock) lastEventT = latestT
         locked = lock
     }
 
@@ -169,7 +202,7 @@ class CameraSource(private val context: Context) {
         if (wantTorch && s.t - lastTorchCheck >= 0.5) {
             lastTorchCheck = s.t
             val cam = camera
-            if (cam != null && cam.cameraInfo.torchState.value != TorchState.ON) main.post { cam.cameraControl.enableTorch(true) }
+            if (cam != null && cam.cameraInfo.torchState.value != TorchState.ON) { lastEventT = s.t; main.post { cam.cameraControl.enableTorch(true) } }
         }
         if (s.covered) {
             lastCovered = s.t
@@ -226,6 +259,7 @@ class CameraSource(private val context: Context) {
                 val flat = off && settled && quality < WEAK
                 if (neverCovered || flat || darkScene) {
                     qualityOff = if (settled) quality else 0.0
+                    lastEventT = s.t
                     light = Light.ON_TRIAL; trialAt = s.t; wantTorch = true; stableSince = -1.0; coverSince = -1.0; decisionPending = true
                     times.clear(); greens.clear(); darkSince = -1.0
                     main.post { cam.cameraControl.enableTorch(true); setLock(false) }
@@ -235,6 +269,7 @@ class CameraSource(private val context: Context) {
                 if (settled) {
                     decisionPending = false
                     if (quality + MARGIN < qualityOff) {
+                        lastEventT = s.t
                         light = Light.OFF_KEPT; wantTorch = false; stableSince = -1.0
                         main.post { cam.cameraControl.enableTorch(false); setLock(false) }
                     } else {
@@ -304,10 +339,10 @@ class CameraSource(private val context: Context) {
             val unit = maxOf(1, Math.round(0.5 / step).toInt())          // about half an EV per move
             val move = if (s.r > 245) unit * 2 else unit
             if (s.r > TOO_BRIGHT && evIndex > range.lower) {
-                evIndex = maxOf(range.lower, evIndex - move); lastEv = s.t; stableSince = -1.0
+                evIndex = maxOf(range.lower, evIndex - move); lastEv = s.t; lastEventT = s.t; stableSince = -1.0
                 main.post { cam.cameraControl.setExposureCompensationIndex(evIndex) }
             } else if (s.r < TOO_DIM && evIndex < 0) {
-                evIndex = minOf(0, evIndex + unit); lastEv = s.t; stableSince = -1.0
+                evIndex = minOf(0, evIndex + unit); lastEv = s.t; lastEventT = s.t; stableSince = -1.0
                 main.post { cam.cameraControl.setExposureCompensationIndex(evIndex) }
             } else if (stableSince < 0) {
                 stableSince = s.t
@@ -320,6 +355,14 @@ class CameraSource(private val context: Context) {
         try {
             val ts = image.imageInfo.timestamp
             if (t0 < 0) t0 = ts
+            if (clockEpochNanos == null) {
+                if (realtimeSource) clockEpochNanos = t0
+                else {
+                    val off = SystemClock.elapsedRealtimeNanos() - ts
+                    if (off < minOffset) minOffset = off
+                    if (++offsetFrames >= 30) clockEpochNanos = t0 + minOffset
+                }
+            }
             val t = (ts - t0) / 1e9
             val plane = image.planes[0]
             val buf = plane.buffer
@@ -331,9 +374,12 @@ class CameraSource(private val context: Context) {
             val x0 = (w - side) / 2
             val y0 = (h - side) / 2
             var sumR = 0L; var sumG = 0L; var sumB = 0L; var hot = 0; var redHot = 0; var n = 0
+            // A 4 x 4 grid over the same square: how much of it looks like covered finger (feed quality, "coverage").
+            val tileR = LongArray(16); val tileG = LongArray(16); val tileN = IntArray(16)
             var y = y0
             while (y < y0 + side) {
                 var x = x0
+                val ty = min(3, (y - y0) * 4 / side)
                 while (x < x0 + side) {
                     val idx = y * rowStride + x * pixelStride
                     val r = buf.get(idx).toInt() and 0xFF
@@ -345,12 +391,21 @@ class CameraSource(private val context: Context) {
                     if (g >= 250) hot++
                     if (r >= 250) redHot++
                     n++
+                    val k = ty * 4 + min(3, (x - x0) * 4 / side)
+                    tileR[k] += r.toLong(); tileG[k] += g.toLong(); tileN[k]++
                     x += 2
                 }
                 y += 2
             }
             if (n == 0) return
-            val s = PPGSample(t, sumR.toDouble() / n, sumG.toDouble() / n, sumB.toDouble() / n, hot.toDouble() / n)
+            var coveredTiles = 0
+            for (k in 0 until 16) if (tileN[k] > 0) {
+                val tr = tileR[k].toDouble() / tileN[k]; val tg = tileG[k].toDouble() / tileN[k]
+                if (tr >= 80 && tg <= 0.7 * tr) coveredTiles++
+            }
+            latestT = t
+            val s = PPGSample(t, sumR.toDouble() / n, sumG.toDouble() / n, sumB.toDouble() / n, hot.toDouble() / n,
+                coverage = coveredTiles / 16.0, event = t - lastEventT < 0.5)
             hotRed = redHot.toDouble() / n
             android.util.Log.v("VLraw", "%.4f,%.3f,%.3f,%.3f".format(t, s.r, s.g, s.b)) // TEMP: raw channel means for offline analysis
             manage(s)

@@ -27,3 +27,11 @@ enum DeviceInfo {
     /// The rear camera a scan uses, from the table; the main (wide) camera by default.
     static var cameraType: String { model?.camera ?? "wide" }
 }
+
+extension DeviceInfo {
+    /// "0.2.0 (3)", the same string About shows, for exports.
+    static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        return "\(info?["CFBundleShortVersionString"] as? String ?? "0") (\(info?["CFBundleVersion"] as? String ?? "0"))"
+    }
+}

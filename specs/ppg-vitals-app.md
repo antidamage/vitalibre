@@ -384,6 +384,10 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
   port in `android/core`, with the same tests on both sides — the near-1:1 start, the exact break at
   80, the catch-up that lands the content where a pull that never met the band would have put it, and
   the re-lock.
+- **Android still carries the reveal fold** (2026-10-03): the Kotlin band and its tests are in
+  `android/core`, but the Android measure screen keeps the earlier fold — a room at the foot of the
+  screen that the panel opens into (`FoldMetrics.room`) — until the page-wide slide can be finished
+  there. The iOS build leads the Android one, as always; the row's kept mark is a bookmark on both.
 - **A finished scan is filed the moment it lands**, unsaved, in today's log: that is what stops
   the last reading being lost by not saving it. Filing is keyed by the scan's own id and happens
   in the tab host, which outlives the measure screen: a scan that finishes while another tab is
@@ -400,10 +404,11 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
   twice leaves one reading, a recalibration refreshes in place, Save adds no second reading, two
   scans are two readings newest first, the prune drops only an earlier day's unkept reading, a
   file written before the log existed reads as kept, and the scan key survives the file.
-- **Past the line is a plain scrolling list** on both platforms; the dashboard's per-panel axis
-  handling (landscape vertical, portrait sideways) does not apply, since a phone screen has one
-  axis. Verified on the simulator: the line and its caption sit at the foot of the measure area
-  with only the bottom bar below them, and the panel at its cap stops below the buttons.
+- Verified on the simulator, iOS (2026-10-03): closed, the line and its caption sit at the foot of the
+  measure area with only the bottom bar below them, nothing of the readings shows, and the orb is
+  centred in the room above the line. The band itself is the part the shared tests hold
+  (`FoldBandTests`, both languages): the near-1:1 start, the break at exactly 80, the catch-up, and
+  the re-lock.
 
 ## Android build (branch `android`)
 
@@ -422,5 +427,7 @@ config with the iOS build through the asset path instead of copying them.
 - Haptics through the vibrator, sounds through a sound pool, both from the engine thread.
 - The iOS build is the source of truth for screens, copy and behaviour; the Android screens match it (the calibration screen has the typical resting pressure and the cuff-calibration count with Reset, nothing more).
 - The synthetic pulse (for testing the scan path) exists only in debug builds; a release build cannot run it.
-- Not yet on Android: Play Billing donations (the buttons are inactive) and the confetti.
+- Not yet on Android: Play Billing donations (the buttons are inactive), the confetti, and the
+  measure page's whole-screen slide — the fold there still opens into its own room at the foot of the
+  screen, and its row's kept mark is now a bookmark like the iOS build's.
 - **Licences on Android**: the app is GPL-3.0-or-later like the iOS build (same `LICENSE`). Compose, CameraX and AndroidX are Apache-2.0, which is compatible with GPLv3 and is credited in About. The Android manifest requests only CAMERA and VIBRATE; there is no network permission, so the "nothing is sent" statement holds there too. Both font licences (Chakra Petch, Rajdhani) ship in `App/Resources/Fonts`.

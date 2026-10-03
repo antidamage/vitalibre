@@ -1,20 +1,21 @@
 package nz.skull.vitalibre
 
 import android.os.SystemClock
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
@@ -26,19 +27,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box as LayoutBox
 import nz.skull.vitalibre.core.CalibrationPoint
 import nz.skull.vitalibre.core.ScanResult
+import nz.skull.vitalibre.core.ScanSession
 import kotlin.math.roundToInt
 
 @Composable
@@ -81,55 +82,56 @@ fun MeasureScreen() {
         }
     }
 
-    // The whole screen is one page behind the fold's line: pulling it up slides everything above
-    // the line away and brings the day's readings in from the foot.
-    FoldPage(label = "Today's readings", count = env.readings.todaysReadings.size, panel = {
-        TodayFold(env.readings)
-    }) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            OrbView(
-                orb, if (phase is Measurer.Phase.Scanning) m.sweepOriginMs else idleOrigin,
-                Modifier.widthIn(max = 430.dp).padding(horizontal = 8.dp)
-                    .onGloballyPositioned { orbBounds = it.boundsInWindow() }
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { tapOrb() },
-                onSize = { px, d -> m.orbPx = px; m.density = d },
-                camera = {
-                    AndroidView({
-                        (m.camera.previewView.parent as? android.view.ViewGroup)?.removeView(m.camera.previewView)
-                        m.camera.previewView
-                    }, Modifier.fillMaxSize())
-                },
-            )
-            Column(
-                Modifier.padding(top = 18.dp).height(80.dp),
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                when (phase) {
-                    is Measurer.Phase.Scanning ->
-                        Text(m.guidance.text, color = p.readout, style = Fonts.chakra(15.sp, Fonts.Face.MEDIUM), textAlign = TextAlign.Center)
-                    is Measurer.Phase.Result -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val r = phase.result
-                        val kept = env.readings.readingForScan(m.scanId)?.saved == true
-                        RingButton(if (kept) "Saved" else "Save", enabled = !kept) {
-                            Sounds.play(Sounds.CLICK)
-                            // The scan is already in today's log by the time this is on
-                            // screen (the tab host files it); this is what keeps it in
-                            // Readings. Filing again is harmless: it lands on the one
-                            // reading this scan has.
-                            env.readings.setSaved(env.readings.file(r, m.scanId).id, true)
-                        }
-                        RingButton("Calibrate") { Sounds.play(Sounds.CLICK); calibrating = true }
-                        Box(Modifier.size(44.dp).clickable { env.activity.shareText(shareText(r.heartRate, r.bp.text)) }, contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.Share, "Share as text", tint = p.clock, modifier = Modifier.size(20.dp))
-                        }
-                        Box(Modifier.size(44.dp).clickable { orbBounds?.let { env.activity.shareOrb(it) } }, contentAlignment = Alignment.Center) {
-                            PictureGlyph(p.clock)
-                        }
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.weight(1f))
+        OrbView(
+            orb, if (phase is Measurer.Phase.Scanning) m.sweepOriginMs else idleOrigin,
+            Modifier.widthIn(max = 430.dp).padding(horizontal = 8.dp)
+                .onGloballyPositioned { orbBounds = it.boundsInWindow() }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { tapOrb() },
+            onSize = { px, d -> m.orbPx = px; m.density = d },
+            camera = {
+                AndroidView({
+                    (m.camera.previewView.parent as? android.view.ViewGroup)?.removeView(m.camera.previewView)
+                    m.camera.previewView
+                }, Modifier.fillMaxSize())
+            },
+        )
+        Column(Modifier.padding(top = 18.dp).height(80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            when (phase) {
+                is Measurer.Phase.Scanning ->
+                    Text(m.guidance.text, color = p.readout, style = Fonts.chakra(15.sp, Fonts.Face.MEDIUM), textAlign = TextAlign.Center)
+                is Measurer.Phase.Result -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val r = phase.result
+                    val kept = env.readings.readingForScan(m.scanId)?.saved == true
+                    RingButton(if (kept) "Saved" else "Save", enabled = !kept) {
+                        Sounds.play(Sounds.CLICK)
+                        // The scan is already in today's log by the time this is on
+                        // screen (the tab host files it); this is what keeps it in
+                        // Readings. Filing again is harmless: it lands on the one
+                        // reading this scan has.
+                        env.readings.setSaved(env.readings.file(r, m.scanId).id, true)
                     }
-                    is Measurer.Phase.Failed ->
-                        Text(phase.message, color = p.led, style = Fonts.rajdhani(17.sp, semibold = true), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
-                    else -> Unit
+                    RingButton("Calibrate") { Sounds.play(Sounds.CLICK); calibrating = true }
+                    Box(Modifier.size(44.dp).clickable { env.activity.shareText(shareText(r.heartRate, r.bp.text)) }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Share, "Share as text", tint = p.clock, modifier = Modifier.size(20.dp))
+                    }
+                    Box(Modifier.size(44.dp).clickable { orbBounds?.let { env.activity.shareOrb(it) } }, contentAlignment = Alignment.Center) {
+                        PictureGlyph(p.clock)
+                    }
                 }
+                is Measurer.Phase.Failed ->
+                    Text(phase.message, color = p.led, style = Fonts.rajdhani(17.sp, semibold = true), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
+                else -> Unit
+            }
+        }
+        // Everything the controls leave, then the fold's room held open at the foot of the area: its
+        // line rests just above the bottom menu whether it is open or shut, opening moves nothing above
+        // it, and the panel cannot reach a control.
+        Spacer(Modifier.weight(1f))
+        Box(Modifier.fillMaxWidth().height(FoldMetrics.room), contentAlignment = Alignment.BottomCenter) {
+            FoldBand("Today's readings", env.readings.todaysReadings.size, FoldMetrics.maxReveal) {
+                TodayFold(env.readings)
             }
         }
     }
@@ -155,9 +157,9 @@ private fun shareText(hr: Double, bp: String) =
         java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date()) + "."
 
 @Composable
-private fun PictureGlyph(color: Color) {
+private fun PictureGlyph(color: androidx.compose.ui.graphics.Color) {
     Canvas(Modifier.size(20.dp)) {
-        drawRoundRect(color, size = size, cornerRadius = CornerRadius(3.dp.toPx()), style = Stroke(1.8.dp.toPx()))
+        drawRoundRect(color, size = size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()), style = Stroke(1.8.dp.toPx()))
         drawCircle(color, 2.2.dp.toPx(), Offset(size.width * 0.3f, size.height * 0.32f))
         drawLine(color, Offset(size.width * 0.12f, size.height * 0.85f), Offset(size.width * 0.45f, size.height * 0.5f), 1.8.dp.toPx())
         drawLine(color, Offset(size.width * 0.45f, size.height * 0.5f), Offset(size.width * 0.7f, size.height * 0.75f), 1.8.dp.toPx())
@@ -167,10 +169,10 @@ private fun PictureGlyph(color: Color) {
 
 /** The row's kept mark: a bookmark, not a star — the star is the reading's own mark in Readings. */
 @Composable
-private fun BookmarkGlyph(filled: Boolean, color: Color) {
+private fun BookmarkGlyph(filled: Boolean, color: androidx.compose.ui.graphics.Color) {
     Canvas(Modifier.padding(start = 8.dp).size(11.dp, 15.dp)) {
         val notch = size.height * 0.72f
-        val path = Path().apply {
+        val path = androidx.compose.ui.graphics.Path().apply {
             moveTo(0f, 0f)
             lineTo(size.width, 0f)
             lineTo(size.width, size.height)
@@ -211,22 +213,20 @@ fun CalibrateDialog(startSystolic: Int, startDiastolic: Int, onDismiss: () -> Un
     }
 }
 
-/**
- * The day's log, past the line: every reading taken today, kept or not. The rows flow on the page
- * itself — pulling the page up is what brings them in, and the page scrolls through them like
- * anything else.
- */
+/** The day's log, past the line: every reading taken today, kept or not. */
 @Composable
 private fun TodayFold(store: ReadingStore) {
     val p = LocalPalette.current
     val df = remember { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) }
-    Column(Modifier.fillMaxWidth().background(p.surface)) {
-        Text(
-            "Taken today. Tap a reading to keep it in Readings, or to drop it again.",
-            color = p.readoutSecondary, style = Fonts.rajdhani(13.sp),
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp),
-        )
-        store.todaysReadings.forEach { r ->
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Text(
+                "Taken today. Tap a reading to keep it in Readings, or to drop it again.",
+                color = p.readoutSecondary, style = Fonts.rajdhani(13.sp),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 8.dp),
+            )
+        }
+        items(store.todaysReadings, key = { it.id }) { r ->
             Row(
                 Modifier.fillMaxWidth()
                     .clickable { Sounds.play(Sounds.CLICK); store.toggleSaved(r.id) }

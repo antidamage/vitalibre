@@ -215,6 +215,23 @@ Explicit and specific: camera permission denied, no torch, no pulse found, lens
 not covered, too much motion, scan too short. A wrong number is worse than no
 number, so an error never shows a value.
 
+## Delivery — deploys are automatic
+
+Standing rule (Adeline, 2026-10-03): once a change is merged into `android` it is deployed to the
+test phones without being asked again, unless she says otherwise for that change. A deploy states
+which revision went out and where it went.
+
+Two limits, so a deploy is never promised for something that cannot happen:
+
+- **An iOS install needs the phone on the home network.** Apple's tooling finds devices by
+  Bonjour/CoreDevice discovery, which does not cross a Tailscale tailnet; measured 2026-10-03,
+  `devicectl` answers `device was not found` for the phone's Tailscale address and for its
+  MagicDNS name. A phone that is away takes the next deploy when it is home.
+- **The Android phone is reached over USB** from the PC that builds the APK.
+
+The iOS build is signed with a free personal team, so an install expires about a week after it is
+made; a fresh deploy brings it back.
+
 ## Definition of done (this build)
 
 1. `swift test` passes for `Core` (geometry, filters, detector on synthetic

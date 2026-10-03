@@ -346,30 +346,44 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
 
 - **Today's readings is a fold on Measure**, the dashboard's advanced fold
   (`nova-ha-dashboard/specs/advanced-fold.md`) on a phone screen, one implementation per
-  platform (`App/Views/FoldBand.swift`; `android/app/src/main/java/nz/skull/vitalibre/FoldBand.kt`).
-- **The line rests on the bottom of the screen area, just above the bottom bar**, with the
+  platform (`App/Views/FoldPage.swift` and `App/Views/FoldDivider.swift`;
+  `android/app/src/main/java/nz/skull/vitalibre/FoldBand.kt`).
+- **The line rests on the bottom of the page, just above the bottom bar**, with the
   caption `TODAY'S READINGS`, the count of today's readings and a solid flattened triangle
   pointing at what it guards, right-aligned above it. The line is the theme accent
   (`palette.line`, this app's port of the dashboard's `--cyber-line`) with the accent's lit
   edge under it: the dashboard's sunken bevel, at 45% instead of the dashboard's 18%, which
-  does not read against a near-black foot of screen.
-- **The band**: 80 pt of upward travel is caught by `d(p) = 28(1 - (1 - p/80)^2)`, nearly
-  1:1 at first and moving nothing by 80 pt; released inside the band the region springs back
-  over 180 ms, ease-out; at 80 pt it breaks and the region follows the finger 1:1 from there.
-  Pulling back down to nothing re-locks it, with no resistance on the way back. A tap opens
-  or closes it, which is also what VoiceOver and TalkBack activate, and the triangle flips to
-  point down. With reduced motion the break lands on the 1:1 position with no animation.
-- **Opening changes no other layout**: the fold holds a room at the foot of the area
-  (`FoldMetrics.room`) whether it is open or shut, and the room is a height in the layout rather
-  than a measurement — a preference over the same views reports a zero rect, which is what the
-  earlier guessed cap was papering over. Its own 30 pt line fills the bottom of that room, so the
-  line always rests just above the bottom menu, opening moves nothing above it, and the panel can
-  never reach a control. Both platforms pass the same cap, `FoldMetrics.maxReveal` (the room less
-  the line).
-- **With nothing past the line it does not open**: the fold is offered only when today's log has a
-  reading, and it stays shut if the room it opens into is smaller than a row (`FoldMetrics.minReveal`,
-  44 pt — a floor in case that room ever shrinks, since the fixed room is wider than one). If the
-  day's log empties while it is open it closes itself.
+  does not read against a near-black foot of screen. `FoldMetrics.rest` (30 pt) is its height, on
+  both platforms.
+- **The whole screen is one page** (Adeline, 2026-10-03: "the whole screen (minus menu) should slide
+  up when the today's readings fold goes up"). Measure is one vertical scroller holding the orb, what
+  it is saying, the line, and the day's readings under it. Closed, the page is exactly the viewport,
+  so the line rests just above the bottom bar and there is nothing to scroll; opened, the page is
+  taller than the viewport by exactly the readings' own height, and everything above the line slides
+  away as the readings come in from the foot and then scroll like any list.
+- **The band** (Adeline: "pulling up grows in resistance against being dragged, before snapping at a
+  certain point and letting the hidden area scroll freely") is the dashboard's, unchanged: 80 pt of
+  upward pull is caught by `d(p) = 28(1 - (1 - p/80)^2)` — nearly 1:1 at first, moving nothing by
+  80 pt — so the page moves by the band's allowance and never by the finger. Released inside the band
+  the page springs back to rest over 180 ms, ease-out, and the release's own fling goes with it.
+- **The break**: at 80 pt the band lets go, the page catches up the 52 pt the band had been holding
+  back (220 ms, `cubic-bezier(0.2, 0.9, 0.3, 1.15)`, the dashboard's slight overshoot), and from
+  there the finger's own travel is the page's, so the hidden area scrolls freely with it.
+- **Re-lock** (Adeline: "when the page is scrolled back out of sight, the rubber band heals"):
+  brought back to its edge the fold closes — the triangle flips back to pointing up — and the next
+  pull meets the 80 pt band again rather than sliding straight through. There is no resistance on the
+  way back.
+- **With nothing past the line it does not open**: the fold exists only when the page overflows the
+  viewport by at least a row (`FoldBand.minReveal`, 44 pt); with nothing taken today the page is
+  exactly the viewport and cannot be pulled at all. If the day's log empties while the fold is open,
+  the page falls back to the viewport and stops scrolling.
+- **A tap opens or closes it fully**, which is also what VoiceOver and TalkBack activate, and the
+  triangle flips to point down while it is open. With reduced motion the break and the spring land on
+  their positions with no animation.
+- **The band's numbers and its two rules are pure and shared**: `Core/FoldBand.swift` and its Kotlin
+  port in `android/core`, with the same tests on both sides — the near-1:1 start, the exact break at
+  80, the catch-up that lands the content where a pull that never met the band would have put it, and
+  the re-lock.
 - **A finished scan is filed the moment it lands**, unsaved, in today's log: that is what stops
   the last reading being lost by not saving it. Filing is keyed by the scan's own id and happens
   in the tab host, which outlives the measure screen: a scan that finishes while another tab is
@@ -377,7 +391,9 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
   refreshes that one reading instead of adding another. Measure is the only screen that shows an
   unkept reading; Readings lists the kept ones. A row reads heart rate, `BPM`, the
   blood-pressure text (one figure per component once calibrated, the population range until
-  then), the time, and a star for kept — tap the row to keep it, tap again to drop it.
+  then), the time, and a **bookmark for kept** — not a star, which is the reading's own mark in
+  Readings and cannot mean two things at once (Adeline, 2026-10-03: "don't use a star as the icon to
+  save it, as we already use that for favouriting") — tap the row to keep it, tap again to drop it.
 - **The rules live in `Core/ReadingLog.swift`**, pure, with no file and no view; `ReadingStore`
   is the observable wrapper over `readings.json`. Seven tests in
   `Tests/VitaLibreCoreTests/ReadingLogTests.swift` cover what the fold turns on: filing one scan

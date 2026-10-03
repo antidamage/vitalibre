@@ -18,6 +18,18 @@ android {
         versionName = "0.2.0"
     }
 
+    val uploadFile = providers.environmentVariable("VITALIBRE_UPLOAD_KEYSTORE").orNull
+    signingConfigs {
+        if (uploadFile != null) {
+            create("upload") {
+                storeFile = file(uploadFile)
+                storePassword = providers.environmentVariable("VITALIBRE_UPLOAD_STORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("VITALIBRE_UPLOAD_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("VITALIBRE_UPLOAD_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // The synthetic pulse exists only here; a shipped build can never run it.
@@ -26,8 +38,7 @@ android {
         release {
             buildConfigField("boolean", "SIMULATION", "false")
             isMinifyEnabled = false
-            // Signed with the debug key until a real release key exists; this is a test build.
-            signingConfig = signingConfigs.getByName("debug")
+            if (uploadFile != null) signingConfig = signingConfigs.getByName("upload")
         }
     }
 
@@ -57,6 +68,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.fragment:fragment:1.9.1")
+    implementation("com.android.billingclient:billing:9.1.0")
 
     val camerax = "1.5.1"
     implementation("androidx.camera:camera-core:$camerax")

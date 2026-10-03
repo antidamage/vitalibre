@@ -19,6 +19,8 @@ import java.io.File
 
 class MainActivity : ComponentActivity() {
     private lateinit var env: AppEnv
+    lateinit var donationBilling: DonationBilling
+        private set
     private var onGranted: (() -> Unit)? = null
     private var onDenied: (() -> Unit)? = null
 
@@ -37,6 +39,8 @@ class MainActivity : ComponentActivity() {
         simulate = BuildConfig.SIMULATION && intent?.getBooleanExtra("simulate", false) == true
         Fonts.init(assets)
         Publisher.init(this)
+        donationBilling = DonationBilling(this)
+        donationBilling.start()
         Sounds.init(this)
         Haptics.init(this)
         env = AppEnv(this, Prefs(this), ReadingStore(this), Measurer(this))
@@ -46,6 +50,16 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (::env.isInitialized && env.measurer.isBusy) env.measurer.cancel()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::donationBilling.isInitialized) donationBilling.queryOutstanding()
+    }
+
+    override fun onDestroy() {
+        if (::donationBilling.isInitialized) donationBilling.close()
+        super.onDestroy()
     }
 
     fun ensureCamera(onGranted: () -> Unit, onDenied: () -> Unit) {

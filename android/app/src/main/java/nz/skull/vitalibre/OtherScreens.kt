@@ -206,6 +206,8 @@ fun HelpScreen() {
         ))
         Card(Publisher.freeForeverTitle, listOf(Publisher.freeForever))
         Card(Publisher.nothingSentTitle, listOf(Publisher.nothingSent))
+        Text("Privacy policy ↗", color = p.led, style = Fonts.rajdhani(17.sp),
+            modifier = Modifier.clickable { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Publisher.privacyURL))) })
         SectionPanel("Further reading") {
             for (s in sources) {
                 Text("${s.title}  ↗", color = p.led, style = Fonts.rajdhani(17.sp),
@@ -229,6 +231,8 @@ fun AboutScreen() {
             DataRow("Licence", "GPL-3.0-or-later")
         }
         SectionPanel("Regulatory") { BodyText(Publisher.regulatory) }
+        Text("Support ↗", color = p.led, style = Fonts.rajdhani(17.sp),
+            modifier = Modifier.clickable { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Publisher.supportURL))) })
         SectionPanel("Third-party notices") {
             BodyText("Chakra Petch, © 2018 The Chakra Petch Project Authors, SIL Open Font License 1.1.")
             BodyText("Rajdhani, by Indian Type Foundry, SIL Open Font License 1.1.")
@@ -248,6 +252,7 @@ fun AboutScreen() {
 @Composable
 fun DonateScreen() {
     val p = LocalPalette.current
+    val billing = LocalEnv.current.activity.donationBilling
     val titles = listOf("A little support", "A generous contribution", "Something extraordinary")
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         ScreenHeading("Support VitaLibre", "Optional. Appreciated. Never required.")
@@ -255,17 +260,20 @@ fun DonateScreen() {
             Text("No ads. No subscription. Nothing to unlock.", color = p.readout, style = Fonts.chakra(22.sp, Fonts.Face.REGULAR))
             BodyText("If this app is useful to you, a one-time donation helps support its development. The app works exactly the same whether you donate or not.")
         }
-        // Play Billing is not wired up yet, so the tiers stay inactive.
         Publisher.donations.forEachIndexed { i, d ->
-            Row(Modifier.fillMaxWidth().console().padding(horizontal = 12.dp, vertical = 14.dp).alpha(0.6f), verticalAlignment = Alignment.CenterVertically) {
+            val enabled = billing.prices.containsKey(d.tier) && billing.state != DonationBilling.State.BUYING && billing.state != DonationBilling.State.LOADING && billing.state != DonationBilling.State.PENDING
+            Row(Modifier.fillMaxWidth().console().then(if (enabled) Modifier.clickable { billing.buy(d.tier) } else Modifier.alpha(0.6f)).padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(titles.getOrElse(i) { "Donation" }, color = p.readout, style = Fonts.chakra(15.sp, Fonts.Face.REGULAR))
                     Text("One-time donation", color = p.readoutSecondary, style = Fonts.rajdhani(15.sp))
                 }
-                Text(d.fallbackPrice, color = p.readout, style = Fonts.rajdhani(27.sp))
+                Text(billing.prices[d.tier] ?: "US ${d.fallbackPrice}", color = p.readout, style = Fonts.rajdhani(27.sp))
             }
         }
-        Text("Donations are not available yet. Every feature remains free.", color = p.readoutSecondary, style = Fonts.rajdhani(17.sp))
+        if (billing.message.isNotEmpty()) Text(billing.message, color = p.readoutSecondary, style = Fonts.rajdhani(17.sp))
+        if (billing.state == DonationBilling.State.UNAVAILABLE || billing.state == DonationBilling.State.FAILED) {
+            Text("Retry Google Play", color = p.led, style = Fonts.rajdhani(17.sp), modifier = Modifier.clickable { billing.refresh() })
+        }
     }
 }
 

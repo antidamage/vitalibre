@@ -13,6 +13,8 @@ class Donation(val tier: Int, val productId: String, val fallbackPrice: String)
 object Publisher {
     lateinit var displayName: String
     lateinit var sourceURL: String
+    lateinit var supportURL: String
+    lateinit var privacyURL: String
     var donations: List<Donation> = emptyList()
     lateinit var freeForeverTitle: String
     lateinit var freeForever: String
@@ -31,6 +33,8 @@ object Publisher {
         val store = MiniJson.parse(text("config/store.config.json")) as Map<*, *>
         displayName = store["displayName"] as String
         sourceURL = store["sourceURL"] as String
+        supportURL = store["supportURL"] as String
+        privacyURL = store["privacyURL"] as String
         donations = (store["donations"] as List<*>).map {
             val d = it as Map<*, *>
             Donation((d["tier"] as Number).toInt(), d["productId"] as String, d["fallbackPrice"] as String)

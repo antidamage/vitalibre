@@ -12,6 +12,7 @@ enum FoldMetrics {
 final class FoldCommands {
     weak var scroll: FoldScrollView?
     func toggle() { scroll?.toggle() }
+    func close() { scroll?.close() }
 }
 
 /// The fold's line: the caption, the count of what it guards, a triangle pointing the way it

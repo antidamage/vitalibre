@@ -57,6 +57,10 @@ final class FoldScrollView: UIScrollView, UIScrollViewDelegate {
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         endBoost()
+        // A touch cancels whatever animation is in flight, and an interrupted
+        // `scrollViewDidEndScrollingAnimation` would otherwise leave this latch set for good —
+        // the band would never run again.
+        springing = false
         guard !pull.open else { return }
         pull = FoldPull()
         inputBase = -panGestureRecognizer.translation(in: self).y
@@ -76,7 +80,11 @@ final class FoldScrollView: UIScrollView, UIScrollViewDelegate {
         guard isDragging else { return }
         switch pull.move(up: input) {
         case .held(let caught): apply(caught)
-        case .broke(let catchUp): snap(by: catchUp)
+        case .broke(let catchUp):
+            // Sit the page where the band left it before the snap takes over, so the catch-up
+            // starts from the band's own position rather than the last frame's.
+            apply(max(0, input - catchUp))
+            snap(by: catchUp)
         case .free, .springBack, .stay: break
         }
     }
@@ -144,6 +152,15 @@ final class FoldScrollView: UIScrollView, UIScrollViewDelegate {
         guard animated else { apply(0); relock(); return }
         springing = true
         setContentOffset(.zero, animated: true)
+    }
+
+    /// Shuts the fold: what happens when the day's log empties while it is open, so the line is not
+    /// left lit over nothing.
+    func close() {
+        guard pull.open else { return }
+        pull = FoldPull()
+        onOpenChange?(false)
+        spring(animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     /// The tap: open the guarded area, or shut it again. This is also what VoiceOver activates.

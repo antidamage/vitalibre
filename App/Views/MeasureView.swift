@@ -1,11 +1,6 @@
 import SwiftUI
 import UIKit
 
-private struct OrbFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
-}
-
 struct MeasureView: View {
     @EnvironmentObject private var measurer: Measurer
     @EnvironmentObject private var readings: ReadingStore
@@ -38,7 +33,10 @@ struct MeasureView: View {
                 .environmentObject(prefs)
                 .environment(\.palette, palette)
         }
-        .onPreferenceChange(OrbFrameKey.self) { orbFrame = $0 }
+        .onChange(of: readings.todaysReadings.isEmpty) { _, empty in
+            // Nothing left past the line: the fold has nothing to guard, so it shuts.
+            if empty { fold.close() }
+        }
         .sheet(isPresented: $calibrating) {
             if case .result(let r) = measurer.phase {
                 CalibrateSheet(result: r) { point in
@@ -62,7 +60,14 @@ struct MeasureView: View {
                 OrbView(input: orb, origin: measurer.phaseIsLive ? measurer.sweepOrigin : idleOrigin) {
                     CameraPreview(session: measurer.camera.session)
                 }
-                .background(GeometryReader { g in Color.clear.preference(key: OrbFrameKey.self, value: g.frame(in: .global)) })
+                // Hosted in its own tree, this view cannot send a preference out to MeasureView:
+                // the orb's frame comes back as a callback, which `shareOrb` needs.
+                .background(GeometryReader { g in
+                    let frame = g.frame(in: .global)
+                    Color.clear
+                        .onAppear { orbFrame = frame }
+                        .onChange(of: frame) { _, new in orbFrame = new }
+                })
                 .frame(maxWidth: 430)
                 .padding(.horizontal, 8)
                 .contentShape(Circle())
@@ -78,7 +83,9 @@ struct MeasureView: View {
                 fold.toggle()
             }
 
-            todayPanel
+            // With nothing taken today there is nothing past the line, so the page is exactly the
+            // viewport and cannot be pulled at all: the fold does not exist until there is.
+            if !readings.todaysReadings.isEmpty { todayPanel }
         }
         .frame(width: viewport.width)
     }

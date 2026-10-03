@@ -365,7 +365,8 @@ Adeline, 2026-10-03: "place the fold line just above the bottom menu".
   certain point and letting the hidden area scroll freely") is the dashboard's, unchanged: 80 pt of
   upward pull is caught by `d(p) = 28(1 - (1 - p/80)^2)` — nearly 1:1 at first, moving nothing by
   80 pt — so the page moves by the band's allowance and never by the finger. Released inside the band
-  the page springs back to rest over 180 ms, ease-out, and the release's own fling goes with it.
+  the page springs back to rest on the platform's own short ease — 180 ms ease-out on Android,
+  `UIScrollView`'s own spring on iOS — and the release's own fling goes with it.
 - **The break**: at 80 pt the band lets go, the page catches up the 52 pt the band had been holding
   back (220 ms, `cubic-bezier(0.2, 0.9, 0.3, 1.15)`, the dashboard's slight overshoot), and from
   there the finger's own travel is the page's, so the hidden area scrolls freely with it.

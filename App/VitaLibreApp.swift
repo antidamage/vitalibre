@@ -5,6 +5,7 @@ struct VitaLibreApp: App {
     @StateObject private var prefs = Preferences()
     @StateObject private var readings = ReadingStore()
     @StateObject private var measurer = Measurer()
+    @StateObject private var donations = Donations()
 
     init() {
         Fonts.register()
@@ -17,6 +18,7 @@ struct VitaLibreApp: App {
                 .environmentObject(prefs)
                 .environmentObject(readings)
                 .environmentObject(measurer)
+                .environmentObject(donations)
                 .preferredColorScheme(prefs.themeMode.forcedScheme)
         }
     }

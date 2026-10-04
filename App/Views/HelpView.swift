@@ -54,6 +54,9 @@ struct HelpView: View {
                 }.font(.rajdhani(17)).tint(palette.led)
                 SectionPanel(title: Publisher.policy.freeForeverTitle, symbol: "heart") { text(Publisher.policy.freeForever) }
                 SectionPanel(title: Publisher.policy.nothingSentTitle, symbol: "lock.shield") { text(Publisher.policy.nothingSent) }
+                if let url = URL(string: Publisher.store.privacyURL) {
+                    Link("Privacy policy ↗", destination: url).font(.rajdhani(17)).tint(palette.led)
+                }
             }.padding(.horizontal, 22).padding(.bottom, 30).frame(maxWidth: 640).frame(maxWidth: .infinity)
         }
     }

@@ -18,6 +18,9 @@ struct AboutView: View {
                     DataRow(title: "Licence", value: "GPL-3.0-or-later")
                 }
                 SectionPanel(title: "Regulatory", symbol: "cross.case") { text(Publisher.policy.regulatory) }
+                if let url = URL(string: Publisher.store.supportURL) {
+                    Link("Support ↗", destination: url).font(.rajdhani(17)).tint(palette.led)
+                }
                 SectionPanel(title: "Third-party notices", symbol: "doc.text") {
                     text("Chakra Petch, © 2018 The Chakra Petch Project Authors, SIL Open Font License 1.1.")
                     text("Rajdhani, by Indian Type Foundry, SIL Open Font License 1.1.")

@@ -5,6 +5,9 @@ and the UX corrections in Hermes session `c5192b72f3dd`, then re-targeted to
 native Swift. Third build: `vitals-libre` (Hermes, React Native) and
 `vitals-libre-codex` (Codex) exist separately and are not touched.
 
+Store-launch decisions and payment requirements are now in `specs/store-launch.md`;
+its publishing details supersede the older deferred-publishing notes below.
+
 ## Scope of this build
 
 - **Platform: Swift / SwiftUI, iPhone first.** Chosen so the UX code can be

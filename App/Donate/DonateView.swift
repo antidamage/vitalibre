@@ -9,7 +9,7 @@ private struct TierFrames: PreferenceKey {
 
 struct DonateView: View {
     @Environment(\.palette) private var palette
-    @StateObject private var donations = Donations()
+    @EnvironmentObject private var donations: Donations
     @State private var frames: [Int: CGRect] = [:]
     @State private var bursts: [ConfettiBurst] = []
 
@@ -25,7 +25,7 @@ struct DonateView: View {
                     }
                     ForEach(Publisher.store.donations) { d in tierButton(d) }
                     statusLine
-                    if case .unavailable = donations.status {
+                    if donations.canRetryProducts {
                         Button("Retry App Store") { Task { await donations.load() } }.buttonStyle(ConsoleStyle())
                     }
                 }.padding(.horizontal, 22).padding(.bottom, 30).frame(maxWidth: 640).frame(maxWidth: .infinity)
@@ -41,7 +41,7 @@ struct DonateView: View {
     private static let symbols = ["heart", "heart.circle", "sparkles"]
 
     private func tierButton(_ d: StoreConfig.Donation) -> some View {
-        let enabled = donations.available(d.tier) && !isBuying
+        let enabled = donations.available(d.tier) && !isBuying && donations.status != .pending
         let index = Publisher.store.donations.firstIndex { $0.tier == d.tier } ?? 0
         return Button {
             DialClick.shared.play()
@@ -78,6 +78,8 @@ struct DonateView: View {
         switch donations.status {
         case .unavailable:
             note("Donations are not available yet. Every feature remains free.")
+        case .pending:
+            note("Payment is pending. The App Store will confirm it when approved.")
         case .loading, .ready, .buying:
             EmptyView()
         case .thanks:

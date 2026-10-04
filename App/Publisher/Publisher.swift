@@ -13,6 +13,7 @@ struct StoreConfig: Decodable {
     let displayName: String
     let bundleId: String
     let supportEmail: String
+    let supportURL: String
     let privacyURL: String
     let sourceURL: String
     let donations: [Donation]

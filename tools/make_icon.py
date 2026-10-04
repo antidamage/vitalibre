@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ICON_SET = ROOT / "App/Assets.xcassets/AppIcon.appiconset"
 MASTER = ICON_SET / "icon-1024.png"
 ANDROID_RES = ROOT / "android/app/src/main/res"
+PLAY_ICON = ROOT / "publisher/store-listing/android/icon-512.png"
 DENSITIES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 
 source = Path(sys.argv[1]) if len(sys.argv) > 1 else MASTER
@@ -37,6 +38,11 @@ for density, size in DENSITIES.items():
         continue
     master.resize((size, size), Image.LANCZOS).save(target)
     written.append(target)
+
+if ANDROID_RES.is_dir():
+    PLAY_ICON.parent.mkdir(parents=True, exist_ok=True)
+    master.resize((512, 512), Image.LANCZOS).convert("RGBA").save(PLAY_ICON)
+    written.append(PLAY_ICON)
 
 json.dump({"images": [{"filename": "icon-1024.png", "idiom": "universal",
                        "platform": "ios", "size": "1024x1024"}],
